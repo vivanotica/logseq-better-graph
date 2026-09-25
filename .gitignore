@@ -1,0 +1,15 @@
+node_modules
+.DS_Store
+dist
+dist-ssr
+*.local
+
+# Local caches, reports and release archives
+.pnpm-store/
+coverage/
+*.tsbuildinfo
+*.log
+logseq-better-graph-*.zip
+.env
+.env.*
+!.env.example
