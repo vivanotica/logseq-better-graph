@@ -19,7 +19,7 @@ function main() {
   logseq.App.registerUIItem("toolbar", {
     key: "better-graph-open",
     template:
-      '<a data-on-click="show" title="Better Graph" aria-label="Open Better Graph"><i class="ti ti-chart-dots-3"></i></a>',
+      '<a class="button" data-on-click="show" title="Better Graph" aria-label="Open Better Graph"><i class="ti ti-chart-dots-3"></i></a>',
   });
   logseq.App.registerCommandPalette(
     {
