@@ -45,7 +45,7 @@ export function createLayout(
         p?.y ??
         (parent ? parent.y + 25 * Math.sin(angle) : spread * Math.sin(angle)),
       radius:
-        (n.kind === "tag" ? 7.4 : n.kind === "block" ? 3.8 : 4.4) +
+        (n.kind === "block" ? 3.8 : 4.4) +
         Math.min(10, 2 * Math.sqrt(degree.get(n.id) ?? 0)),
     };
   });
@@ -55,15 +55,11 @@ export function createLayout(
       target: e.target,
       kind: e.kind,
     }));
-  const anchors = new Map(
-    graph.regions.map((r, i) => {
-      const angle = i * Math.PI * (3 - Math.sqrt(5));
-      const radius = Math.sqrt(i) * Math.max(180, Math.sqrt(nodes.length) * 12);
-      return [
-        r.id,
-        { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius },
-      ];
-    }),
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const groups = graph.regions.map((region) =>
+    region.memberIds
+      .map((id) => byId.get(id))
+      .filter((n): n is LayoutNode => !!n),
   );
   const simulation = forceSimulation(nodes)
     .stop()
@@ -88,15 +84,27 @@ export function createLayout(
     .force("center", forceCenter(0, 0))
     .force("y", forceY<LayoutNode>(0).strength(0.018))
     .force("tags", (alpha) => {
-      for (const n of nodes) {
-        const groups = (n.kind === "tag" ? [n.id, ...n.tagIds] : n.tagIds)
-          .map((id) => anchors.get(id))
-          .filter((p): p is { x: number; y: number } => !!p);
-        if (!groups.length) continue;
-        const x = groups.reduce((sum, p) => sum + p.x, 0) / groups.length,
-          y = groups.reduce((sum, p) => sum + p.y, 0) / groups.length;
-        n.vx = (n.vx ?? 0) + (x - n.x) * 0.08 * alpha;
-        n.vy = (n.vy ?? 0) + (y - n.y) * 0.08 * alpha;
+      // Each region follows its members, with no fixed anchor or parent node.
+      // Average overlapping memberships so multi-tag nodes are not pulled harder.
+      const pulls = new Map<
+        LayoutNode,
+        { x: number; y: number; count: number }
+      >();
+      for (const members of groups) {
+        if (members.length < 2) continue;
+        const x = members.reduce((sum, n) => sum + n.x, 0) / members.length;
+        const y = members.reduce((sum, n) => sum + n.y, 0) / members.length;
+        for (const n of members) {
+          const pull = pulls.get(n) ?? { x: 0, y: 0, count: 0 };
+          pull.x += x - n.x;
+          pull.y += y - n.y;
+          pull.count++;
+          pulls.set(n, pull);
+        }
+      }
+      for (const [n, pull] of pulls) {
+        n.vx = (n.vx ?? 0) + (pull.x / pull.count) * 0.08 * alpha;
+        n.vy = (n.vy ?? 0) + (pull.y / pull.count) * 0.08 * alpha;
       }
     });
   return { simulation, nodes };

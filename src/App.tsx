@@ -148,8 +148,7 @@ function GraphScreen() {
           <div>
             <h1>Better Graph</h1>
             <p>
-              {snapshot.graphName || "Logseq DB"}{" "}
-              <span>Pages, blocks & tags</span>
+              {snapshot.graphName || "Logseq DB"} <span>Pages & blocks</span>
             </p>
           </div>
         </div>
@@ -289,8 +288,10 @@ function GraphScreen() {
           <aside className="graph-settings" aria-label="Graph settings">
             <section>
               <h2>View mode</h2>
-              <div className="mode-active">Pages, blocks & tags</div>
-              <p className="muted">Original hierarchy. Shared tag regions.</p>
+              <div className="mode-active">Pages & blocks</div>
+              <p className="muted">
+                Original hierarchy. Fluid, overlapping tag regions.
+              </p>
             </section>
             <section>
               <h2>Find a node</h2>

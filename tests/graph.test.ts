@@ -304,3 +304,66 @@ test("resolved full-title and empty embed titles retain readable names", () => {
   ]);
   assert.equal(g.nodes.find((n) => n.id === "link")?.label, "Original block");
 });
+
+test("tags are regions only, even when referenced or used as a containing page", () => {
+  const graph = buildGraph([
+    ...base(),
+    entity("tagChild", { pageId: "t1", parentId: "t1", refs: ["B"] }),
+    entity("tagReference", { pageId: "A", parentId: "A", refs: ["t1"] }),
+    entity("emptyTag", { name: "Empty", tags: ["tagClass"] }),
+  ]);
+  const tags = new Set(["t1", "t2", "emptyTag"]);
+  assert.ok(graph.nodes.every((n) => !tags.has(n.id)));
+  assert.ok(
+    graph.edges.every((e) => !tags.has(e.source) && !tags.has(e.target)),
+  );
+  assert.ok(graph.nodes.some((n) => n.id === "tagChild"));
+  assert.equal(
+    graph.nodes.find((n) => n.id === "tagChild")?.parentId,
+    undefined,
+  );
+  assert.ok(graph.nodes.some((n) => n.id === "tagReference"));
+  assert.deepEqual(
+    graph.regions.find((r) => r.id === "emptyTag")?.memberIds,
+    [],
+  );
+  assert.equal(
+    filterGraph(graph, {
+      ...defaultSettings,
+      selectedTagIds: ["emptyTag"],
+    }).nodes.length,
+    0,
+  );
+});
+
+test("tag forces follow moved members and are independent of region order", () => {
+  const graph = buildGraph(base());
+  const previous = graph.nodes.map((n, i) => ({
+    id: n.id,
+    x: i * 30,
+    y: i * 15,
+    radius: 4,
+  }));
+  const first = createLayout(graph, 72, previous);
+  const moved = createLayout(
+    { ...graph, regions: [...graph.regions].reverse() },
+    72,
+    previous.map((p) => ({ ...p, x: p.x + 800, y: p.y - 450 })),
+  );
+  first.simulation.force("tags")!(1);
+  moved.simulation.force("tags")!(1);
+  for (let i = 0; i < first.nodes.length; i++) {
+    assert.ok(Math.abs(first.nodes[i].vx! - moved.nodes[i].vx!) < 1e-10);
+    assert.ok(Math.abs(first.nodes[i].vy! - moved.nodes[i].vy!) < 1e-10);
+  }
+  first.simulation.stop();
+  moved.simulation.stop();
+  assert.deepEqual(regionBoundary([]), []);
+  const single = regionBoundary([{ id: "a", x: 0, y: 0, radius: 4 }]);
+  const shifted = regionBoundary([{ id: "a", x: 50, y: 80, radius: 4 }]);
+  assert.equal(single.length, shifted.length);
+  single.forEach((point, i) => {
+    assert.ok(Math.abs(shifted[i].x - point.x - 50) < 1e-10);
+    assert.ok(Math.abs(shifted[i].y - point.y - 80) < 1e-10);
+  });
+});

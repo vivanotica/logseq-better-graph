@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { GraphData, GraphNode, neighborhood, tagColor } from "./graph/model";
+import { GraphData, GraphNode, neighborhood } from "./graph/model";
 import { Position, regionBoundary, Point } from "./graph/layout";
 import { reserveLabel } from "./graph/labels";
 interface Props {
@@ -46,6 +46,10 @@ export function GraphCanvas(props: Props) {
     let active = new Set<string>();
     let lastSelection: string[] | undefined;
     let lastDepth = 0;
+    let labelActive = new Set<string>();
+    let lastLabelSelection: string[] | undefined;
+    let lastLabelDepth = 0;
+    let lastLabelHover: string | null = null;
     let gesture: {
       id: string | null;
       x: number;
@@ -64,7 +68,7 @@ export function GraphCanvas(props: Props) {
         label: r.label,
         color: r.color,
         points: regionBoundary(
-          [...new Set([r.id, ...r.memberIds])]
+          r.memberIds
             .map((id) => positions.current.get(id))
             .filter((p): p is Position => !!p),
         ),
@@ -80,6 +84,20 @@ export function GraphCanvas(props: Props) {
         lastSelection = p.selected;
         lastDepth = p.depth;
       }
+      if (
+        lastLabelSelection !== p.selected ||
+        lastLabelDepth !== p.depth ||
+        lastLabelHover !== hover
+      ) {
+        labelActive = neighborhood(
+          graph,
+          hover ? [...p.selected, hover] : p.selected,
+          p.depth,
+        );
+        lastLabelSelection = p.selected;
+        lastLabelDepth = p.depth;
+        lastLabelHover = hover;
+      }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
       ctx.translate(view.x, view.y);
@@ -88,9 +106,18 @@ export function GraphCanvas(props: Props) {
       for (const region of boundaries) {
         if (!region.points.length) continue;
         ctx.beginPath();
-        region.points.forEach((point, i) =>
-          i === 0 ? ctx.moveTo(point.x, point.y) : ctx.lineTo(point.x, point.y),
-        );
+        const last = region.points[region.points.length - 1];
+        const first = region.points[0];
+        ctx.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2);
+        region.points.forEach((point, i) => {
+          const next = region.points[(i + 1) % region.points.length];
+          ctx.quadraticCurveTo(
+            point.x,
+            point.y,
+            (point.x + next.x) / 2,
+            (point.y + next.y) / 2,
+          );
+        });
         ctx.closePath();
         ctx.fillStyle = region.color;
         ctx.globalAlpha = p.tagFocus === region.id ? 0.17 : 0.065;
@@ -185,24 +212,21 @@ export function GraphCanvas(props: Props) {
         if (sx < -150 || sy < -50 || sx > width + 150 || sy > height + 50)
           continue;
         const selected = p.selected.includes(n.id),
-          focused =
-            !p.tagFocus || n.id === p.tagFocus || n.tagIds.includes(p.tagFocus);
+          focused = !p.tagFocus || n.tagIds.includes(p.tagFocus);
         ctx.globalAlpha =
           !focused || (p.selected.length && !active.has(n.id) && n.id !== hover)
             ? 0.16
             : 1;
         ctx.fillStyle =
-          n.kind === "tag"
-            ? tagColor(n.id)
-            : n.kind === "journal"
-              ? "#38bdf8"
-              : n.kind === "block"
-                ? p.dark
-                  ? "#94a3b8"
-                  : "#94a3b8"
-                : p.dark
-                  ? "#cbd5e1"
-                  : "#64748b";
+          n.kind === "journal"
+            ? "#38bdf8"
+            : n.kind === "block"
+              ? p.dark
+                ? "#94a3b8"
+                : "#94a3b8"
+              : p.dark
+                ? "#cbd5e1"
+                : "#64748b";
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, pos.radius, 0, Math.PI * 2);
         ctx.fill();
@@ -219,6 +243,7 @@ export function GraphCanvas(props: Props) {
           n.label.length > max ? n.label.slice(0, max) + "…" : n.label;
         const labelX = sx + pos.radius * view.scale + 5;
         if (
+          (n.kind !== "block" || labelActive.has(n.id)) &&
           (selected || n.id === hover || view.scale > 0.3) &&
           reserveLabel(
             occupied,
@@ -379,6 +404,11 @@ export function GraphCanvas(props: Props) {
       }
       schedule();
     };
+    const leave = () => {
+      hover = null;
+      canvas.title = "";
+      schedule();
+    };
     const up = (e: PointerEvent) => {
       if (!gesture) return;
       const g = gesture;
@@ -433,6 +463,7 @@ export function GraphCanvas(props: Props) {
     canvas.addEventListener("pointerdown", down);
     canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerup", up);
+    canvas.addEventListener("pointerleave", leave);
     canvas.addEventListener("pointercancel", cancel);
     canvas.addEventListener("dblclick", dbl);
     canvas.addEventListener("wheel", wheel, { passive: false });
@@ -448,6 +479,7 @@ export function GraphCanvas(props: Props) {
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerup", up);
+      canvas.removeEventListener("pointerleave", leave);
       canvas.removeEventListener("pointercancel", cancel);
       canvas.removeEventListener("dblclick", dbl);
       canvas.removeEventListener("wheel", wheel);

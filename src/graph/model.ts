@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Adapted from Logseq graph_view.cljs; see NOTICE.
-export type NodeKind = "page" | "block" | "tag" | "journal";
+export type NodeKind = "page" | "block" | "journal";
 export interface Entity {
   id: string;
   uuid?: string;
@@ -130,9 +130,13 @@ export function buildGraph(entities: Entity[]): GraphData {
     while (current && !seen.has(current.id)) {
       seen.add(current.id);
       const already = expanded.has(current.id);
-      nodeIds.add(current.id);
+      if (!tags.has(current.id)) nodeIds.add(current.id);
       expanded.add(current.id);
-      if (current.pageId && allowed.has(current.pageId))
+      if (
+        current.pageId &&
+        allowed.has(current.pageId) &&
+        !tags.has(current.pageId)
+      )
         nodeIds.add(current.pageId);
       if (already) break;
       current = allowed.get(current.parentId ?? current.pageId ?? "");
@@ -142,6 +146,7 @@ export function buildGraph(entities: Entity[]): GraphData {
     if (!allowed.has(source) || !allowed.has(target)) return;
     addPath(source);
     addPath(target);
+    if (tags.has(source) || tags.has(target)) return;
     const id = `${kind}:${source}:${target}`;
     edges.set(id, { id, source, target, kind });
   }
@@ -177,14 +182,15 @@ export function buildGraph(entities: Entity[]): GraphData {
       id,
       uuid: e.uuid,
       label: label || e.name || "(Untitled)",
-      kind: tags.has(id)
-        ? "tag"
-        : e.journal || classIdents(e).includes("logseq.class/Journal")
+      kind:
+        e.journal || classIdents(e).includes("logseq.class/Journal")
           ? "journal"
           : e.name !== undefined
             ? "page"
             : "block",
-      parentId: e.parentId ?? (e.pageId !== id ? e.pageId : undefined),
+      parentId: nodeIds.has(e.parentId ?? e.pageId ?? "")
+        ? (e.parentId ?? (e.pageId !== id ? e.pageId : undefined))
+        : undefined,
       pageId: e.pageId,
       tagIds: e.tags.filter((t) => tags.has(t)),
     };
@@ -196,14 +202,12 @@ export function buildGraph(entities: Entity[]): GraphData {
       list.push(n.id);
       members.set(t, list);
     }
-  const regions = [...tags]
-    .filter((id) => nodeIds.has(id))
-    .map((id) => ({
-      id,
-      label: allowed.get(id)!.title,
-      memberIds: members.get(id) ?? [],
-      color: tagColor(id),
-    }));
+  const regions = [...tags].map((id) => ({
+    id,
+    label: allowed.get(id)!.title,
+    memberIds: members.get(id) ?? [],
+    color: tagColor(id),
+  }));
   return { nodes, edges: [...edges.values()], regions };
 }
 export function filterGraph(
@@ -243,13 +247,7 @@ export function filterGraph(
   const ids = new Set<string>();
   for (const n of graph.nodes) {
     if (!eligible.has(n.id)) continue;
-    if (
-      selected !== null &&
-      !(n.kind === "tag"
-        ? selected.has(n.id)
-        : n.tagIds.some((t) => selected.has(t)))
-    )
-      continue;
+    if (selected !== null && !n.tagIds.some((t) => selected.has(t))) continue;
     let current: GraphNode | undefined = n;
     while (current && eligible.has(current.id) && !ids.has(current.id)) {
       ids.add(current.id);
