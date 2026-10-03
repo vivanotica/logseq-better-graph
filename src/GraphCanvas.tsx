@@ -1,7 +1,14 @@
 import React, { useEffect, useRef } from "react";
-import { GraphData, GraphNode, neighborhood } from "./graph/model";
+import { GraphData, GraphNode } from "./graph/model";
 import { Position, regionBoundary, Point } from "./graph/layout";
-import { reserveLabel } from "./graph/labels";
+import { derivePages, explorePages } from "./graph/pages";
+import {
+  fadeLabel,
+  LabelFade,
+  nearbyLabels,
+  reserveLabel,
+} from "./graph/labels";
+import { nodeColor } from "./graph/colors";
 interface Props {
   graph: GraphData;
   distance: number;
@@ -14,6 +21,29 @@ interface Props {
   onSelect: (id: string | null, add: boolean) => void;
   onOpen: (node: GraphNode) => void;
 }
+function nodePath(
+  ctx: CanvasRenderingContext2D,
+  kind: GraphNode["kind"],
+  x: number,
+  y: number,
+  radius: number,
+) {
+  ctx.beginPath();
+  if (kind === "page") {
+    // Keep corners within the radius used by collision and hit testing.
+    const half = radius / Math.SQRT2;
+    ctx.rect(x - half, y - half, half * 2, half * 2);
+  } else if (kind === "journal") {
+    ctx.moveTo(x, y - radius);
+    ctx.lineTo(x + radius, y);
+    ctx.lineTo(x, y + radius);
+    ctx.lineTo(x - radius, y);
+    ctx.closePath();
+  } else {
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+  }
+}
+
 export function GraphCanvas(props: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null),
     latest = useRef(props);
@@ -28,7 +58,8 @@ export function GraphCanvas(props: Props) {
     if (!context) return;
     const ctx = context,
       graph = props.graph,
-      nodes = new Map(graph.nodes.map((n) => [n.id, n]));
+      nodes = new Map(graph.nodes.map((n) => [n.id, n])),
+      pages = derivePages(graph);
     const worker = new Worker(
       new URL("./graph/layout.worker.ts", import.meta.url),
       { type: "module" },
@@ -37,19 +68,17 @@ export function GraphCanvas(props: Props) {
       height = 1,
       frame = 0,
       hover: string | null = null;
+    let pointer: Point | null = null;
+    const labelFades = new Map<string, LabelFade & { text: string }>();
     let boundaries: {
       id: string;
       label: string;
       color: string;
       points: Point[];
     }[] = [];
-    let active = new Set<string>();
+    let exploration = explorePages(graph, pages, [], props.depth);
     let lastSelection: string[] | undefined;
     let lastDepth = 0;
-    let labelActive = new Set<string>();
-    let lastLabelSelection: string[] | undefined;
-    let lastLabelDepth = 0;
-    let lastLabelHover: string | null = null;
     let gesture: {
       id: string | null;
       x: number;
@@ -76,28 +105,26 @@ export function GraphCanvas(props: Props) {
     };
     function draw() {
       frame = 0;
+      const now = performance.now();
+      let animatingLabels = false;
       const p = latest.current,
         view = camera.current,
         dpr = Math.min(window.devicePixelRatio || 1, 2);
       if (lastSelection !== p.selected || lastDepth !== p.depth) {
-        active = neighborhood(graph, p.selected, p.depth);
+        exploration = explorePages(graph, pages, p.selected, p.depth);
         lastSelection = p.selected;
         lastDepth = p.depth;
       }
-      if (
-        lastLabelSelection !== p.selected ||
-        lastLabelDepth !== p.depth ||
-        lastLabelHover !== hover
-      ) {
-        labelActive = neighborhood(
-          graph,
-          hover ? [...p.selected, hover] : p.selected,
-          p.depth,
-        );
-        lastLabelSelection = p.selected;
-        lastLabelDepth = p.depth;
-        lastLabelHover = hover;
-      }
+      const active = exploration.nodes;
+      const exploring = p.selected.length > 0;
+      hover = pointer ? hit(pointer) : null;
+      canvas.title = !exploring && hover ? (nodes.get(hover)?.label ?? "") : "";
+      canvas.style.cursor = hover ? "pointer" : "grab";
+      const nearby = nearbyLabels(
+        positions.current.values(),
+        view,
+        exploring ? null : pointer,
+      );
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
       ctx.translate(view.x, view.y);
@@ -143,18 +170,28 @@ export function GraphCanvas(props: Props) {
           ctx.fillText(label, top.x, top.y - 6 / view.scale);
       }
       ctx.globalAlpha = 1;
-      for (const e of graph.edges) {
+      for (const e of [...pages.connections, ...graph.edges]) {
+        const representative = e.kind === "page-reference";
+        if (
+          !representative &&
+          e.kind !== "hierarchy" &&
+          !exploration.edgeIds.has(e.id)
+        )
+          continue;
         const a = positions.current.get(e.source),
           b = positions.current.get(e.target);
         if (!a || !b) continue;
         const highlighted =
-          p.selected.length > 0 && active.has(a.id) && active.has(b.id);
-        ctx.globalAlpha =
-          p.selected.length && !highlighted
-            ? 0.08
-            : e.kind === "hierarchy"
-              ? 0.42
-              : 0.65;
+          !representative && exploring && exploration.edgeIds.has(e.id);
+        ctx.globalAlpha = representative
+          ? exploring
+            ? 0.16
+            : 0.65
+          : e.kind === "hierarchy"
+            ? highlighted
+              ? 0.3
+              : 0.12
+            : 0.85;
         ctx.strokeStyle = highlighted
           ? "#60a5fa"
           : e.kind === "hierarchy"
@@ -164,9 +201,12 @@ export function GraphCanvas(props: Props) {
             : p.dark
               ? "#94a3b8"
               : "#64748b";
-        ctx.lineWidth = (highlighted ? 1.7 : 1) / view.scale;
+        ctx.lineWidth =
+          (representative ? 1.8 : highlighted ? 1.5 : 0.7) / view.scale;
         ctx.setLineDash(
-          e.kind === "hierarchy" ? [] : [4 / view.scale, 4 / view.scale],
+          e.kind === "hierarchy" || representative
+            ? []
+            : [4 / view.scale, 4 / view.scale],
         );
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
@@ -199,70 +239,85 @@ export function GraphCanvas(props: Props) {
           ctx.fill();
         }
       }
-      const ordered = [...graph.nodes].sort(
-        (a, b) =>
-          Number(p.selected.includes(b.id) || b.id === hover) -
-          Number(p.selected.includes(a.id) || a.id === hover),
-      );
+      const ordered = [...graph.nodes].sort((a, b) => {
+        if (exploring)
+          return (
+            Number(p.selected.includes(b.id)) -
+            Number(p.selected.includes(a.id))
+          );
+        return (
+          Number(b.id === hover) - Number(a.id === hover) ||
+          (nearby.get(a.id) ?? Infinity) - (nearby.get(b.id) ?? Infinity)
+        );
+      });
       for (const n of ordered) {
         const pos = positions.current.get(n.id);
         if (!pos) continue;
         const sx = pos.x * view.scale + view.x,
           sy = pos.y * view.scale + view.y;
-        if (sx < -150 || sy < -50 || sx > width + 150 || sy > height + 50)
+        if (sx < -150 || sy < -50 || sx > width + 150 || sy > height + 50) {
+          labelFades.delete(n.id);
           continue;
+        }
         const selected = p.selected.includes(n.id),
           focused = !p.tagFocus || n.tagIds.includes(p.tagFocus);
         ctx.globalAlpha =
-          !focused || (p.selected.length && !active.has(n.id) && n.id !== hover)
-            ? 0.16
-            : 1;
-        ctx.fillStyle =
-          n.kind === "journal"
-            ? "#38bdf8"
-            : n.kind === "block"
-              ? p.dark
-                ? "#94a3b8"
-                : "#94a3b8"
-              : p.dark
-                ? "#cbd5e1"
-                : "#64748b";
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, pos.radius, 0, Math.PI * 2);
+          !focused || (exploring && !active.has(n.id)) ? 0.16 : 1;
+        ctx.fillStyle = nodeColor(n.kind, p.dark);
+        nodePath(ctx, n.kind, pos.x, pos.y, pos.radius);
         ctx.fill();
         if (selected || n.id === hover) {
           ctx.strokeStyle = "#60a5fa";
           ctx.lineWidth = 2 / view.scale;
-          ctx.beginPath();
-          ctx.arc(pos.x, pos.y, pos.radius + 4 / view.scale, 0, Math.PI * 2);
+          nodePath(ctx, n.kind, pos.x, pos.y, pos.radius + 4 / view.scale);
           ctx.stroke();
         }
         ctx.font = `${12 / view.scale}px system-ui`;
-        const max = n.id === hover || selected ? 96 : 24;
+        const emphasized = selected || (!exploring && n.id === hover);
+        const max = emphasized ? 96 : 24;
         const label =
           n.label.length > max ? n.label.slice(0, max) + "…" : n.label;
         const labelX = sx + pos.radius * view.scale + 5;
-        if (
-          (n.kind !== "block" || labelActive.has(n.id)) &&
-          (selected || n.id === hover || view.scale > 0.3) &&
+        const showLabel =
+          (exploring
+            ? (n.kind !== "block" || active.has(n.id)) &&
+              (selected || view.scale > 0.3)
+            : n.kind === "page" || nearby.has(n.id)) &&
           reserveLabel(
             occupied,
             labelX,
             sy - 9,
             ctx.measureText(label).width * view.scale,
             16,
-            selected || n.id === hover,
-          )
-        ) {
+            emphasized,
+          );
+        const targetOpacity = showLabel ? ctx.globalAlpha : 0;
+        let fade = labelFades.get(n.id);
+        if (!fade && showLabel) {
+          fade = {
+            from: 0,
+            target: targetOpacity,
+            startedAt: now,
+            text: label,
+          };
+          labelFades.set(n.id, fade);
+        }
+        if (fade) {
+          const opacity = fadeLabel(fade, targetOpacity, now);
+          if (showLabel) fade.text = label;
+          animatingLabels ||= opacity !== targetOpacity;
+          ctx.globalAlpha = opacity;
           ctx.fillStyle = p.dark ? "#e2e8f0" : "#0f172a";
           ctx.fillText(
-            label,
+            fade.text,
             pos.x + pos.radius + 5 / view.scale,
             pos.y + 4 / view.scale,
           );
+          if (opacity === 0 && targetOpacity === 0) labelFades.delete(n.id);
         }
       }
       ctx.globalAlpha = 1;
+      if (animatingLabels) schedule();
     }
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(draw);
@@ -363,6 +418,7 @@ export function GraphCanvas(props: Props) {
       fitOnSettle = false;
       canvas.focus();
       const p = point(e);
+      pointer = p;
       gesture = {
         id: hit(p),
         x: p.x,
@@ -375,6 +431,8 @@ export function GraphCanvas(props: Props) {
     };
     const move = (e: PointerEvent) => {
       const p = point(e);
+      pointer =
+        p.x >= 0 && p.y >= 0 && p.x <= width && p.y <= height ? p : null;
       if (gesture) {
         gesture.moved ||=
           Math.hypot(p.x - gesture.startX, p.y - gesture.startY) > 3;
@@ -397,14 +455,11 @@ export function GraphCanvas(props: Props) {
         }
         gesture.x = p.x;
         gesture.y = p.y;
-      } else {
-        hover = hit(p);
-        canvas.title = hover ? (nodes.get(hover)?.label ?? "") : "";
-        canvas.style.cursor = hover ? "pointer" : "grab";
       }
       schedule();
     };
     const leave = () => {
+      pointer = null;
       hover = null;
       canvas.title = "";
       schedule();
@@ -441,6 +496,7 @@ export function GraphCanvas(props: Props) {
           3.6,
           Math.max(0.05, camera.current.scale * (e.deltaY > 0 ? 0.9 : 1.1)),
         );
+      pointer = p;
       camera.current = {
         x: p.x - w.x * scale,
         y: p.y - w.y * scale,

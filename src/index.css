@@ -259,7 +259,9 @@ body {
   position: absolute;
   top: 18px;
   left: 20px;
+  right: 20px;
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   pointer-events: none;
   color: var(--muted);
@@ -402,4 +404,19 @@ body {
     padding: 0 14px;
     height: 64px;
   }
+}
+
+.graph-legend .node-page,
+.graph-legend .node-block,
+.graph-legend .node-journal {
+  width: 9px;
+  height: 9px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.graph-legend .node-block {
+  border-radius: 50%;
+}
+.graph-legend .node-journal {
+  transform: rotate(45deg);
 }

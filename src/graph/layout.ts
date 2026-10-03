@@ -11,6 +11,7 @@ import {
   SimulationLinkDatum,
 } from "d3-force";
 import { GraphData, GraphNode } from "./model";
+import { derivePages } from "./pages";
 export interface Position {
   id: string;
   x: number;
@@ -24,11 +25,8 @@ export function createLayout(
   distance: number,
   previous: Position[],
 ) {
+  const pages = derivePages(graph);
   const saved = new Map(previous.map((p) => [p.id, p]));
-  const degree = new Map<string, number>();
-  for (const e of graph.edges)
-    for (const id of [e.source, e.target])
-      degree.set(id, (degree.get(id) ?? 0) + 1);
   const nodes: LayoutNode[] = graph.nodes.map((n, i) => {
     const p = saved.get(n.id);
     const parent = saved.get(n.parentId ?? "");
@@ -44,31 +42,52 @@ export function createLayout(
       y:
         p?.y ??
         (parent ? parent.y + 25 * Math.sin(angle) : spread * Math.sin(angle)),
+      // Use the full label, independent of zoom, truncation, or link count.
+      // A bounded logarithmic scale keeps long blocks readable in dense graphs.
       radius:
-        (n.kind === "block" ? 3.8 : 4.4) +
-        Math.min(10, 2 * Math.sqrt(degree.get(n.id) ?? 0)),
+        5 +
+        Math.min(15, 2 * Math.log2(1 + Array.from(n.label.trim()).length / 8)),
     };
   });
-  const links: (SimulationLinkDatum<LayoutNode> & { kind: string })[] =
-    graph.edges.map((e) => ({
-      source: e.source,
-      target: e.target,
-      kind: e.kind,
-    }));
+  const clusterRadius = (id: string) =>
+    40 + Math.sqrt(pages.members.get(id)?.length ?? 1) * 18;
+  const links: (SimulationLinkDatum<LayoutNode> & {
+    kind: string;
+    span: number;
+  })[] = [...graph.edges, ...pages.connections].map((e) => ({
+    source: e.source,
+    target: e.target,
+    kind: e.kind,
+    span:
+      e.kind === "page-reference"
+        ? clusterRadius(e.source) + clusterRadius(e.target) + distance
+        : distance,
+  }));
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const groups = graph.regions.map((region) =>
     region.memberIds
       .map((id) => byId.get(id))
       .filter((n): n is LayoutNode => !!n),
   );
+  const pageNodes = nodes.filter((n) => n.kind !== "block");
+  const pageCollision = forceCollide<LayoutNode>()
+    .radius((n) => clusterRadius(n.id))
+    .strength(0.8);
+  pageCollision.initialize(pageNodes, Math.random);
   const simulation = forceSimulation(nodes)
     .stop()
     .force(
       "link",
       forceLink<LayoutNode, (typeof links)[number]>(links)
         .id((n) => n.id)
-        .distance((e) => (e.kind === "hierarchy" ? distance * 0.8 : distance))
-        .strength((e) => (e.kind === "hierarchy" ? 0.82 : 0.45)),
+        .distance((e) => (e.kind === "hierarchy" ? distance * 0.65 : e.span))
+        .strength((e) =>
+          e.kind === "page-reference"
+            ? 0.6
+            : e.kind === "hierarchy"
+              ? 0.6
+              : 0.025,
+        ),
     )
     .force(
       "charge",
@@ -81,6 +100,15 @@ export function createLayout(
         .strength(0.86)
         .iterations(2),
     )
+    .force("pageCollision", (alpha) => pageCollision(alpha))
+    .force("pageMembership", (alpha) => {
+      for (const n of nodes) {
+        const owner = byId.get(pages.owners.get(n.id) ?? "");
+        if (!owner || owner === n) continue;
+        n.vx = (n.vx ?? 0) + (owner.x - n.x) * 0.18 * alpha;
+        n.vy = (n.vy ?? 0) + (owner.y - n.y) * 0.18 * alpha;
+      }
+    })
     .force("center", forceCenter(0, 0))
     .force("y", forceY<LayoutNode>(0).strength(0.018))
     .force("tags", (alpha) => {
@@ -103,8 +131,8 @@ export function createLayout(
         }
       }
       for (const [n, pull] of pulls) {
-        n.vx = (n.vx ?? 0) + (pull.x / pull.count) * 0.08 * alpha;
-        n.vy = (n.vy ?? 0) + (pull.y / pull.count) * 0.08 * alpha;
+        n.vx = (n.vx ?? 0) + (pull.x / pull.count) * 0.025 * alpha;
+        n.vy = (n.vy ?? 0) + (pull.y / pull.count) * 0.025 * alpha;
       }
     });
   return { simulation, nodes };

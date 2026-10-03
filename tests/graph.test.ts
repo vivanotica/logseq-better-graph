@@ -367,3 +367,19 @@ test("tag forces follow moved members and are independent of region order", () =
     assert.ok(Math.abs(shifted[i].y - point.y - 80) < 1e-10);
   });
 });
+
+test("node sizes follow full text length, stay bounded, and ignore connection count", () => {
+  const graph = buildGraph([
+    entity("short", { name: "short", title: "a", refs: ["medium", "long"] }),
+    entity("medium", { name: "medium", title: "가".repeat(80) }),
+    entity("long", { name: "long", title: "a".repeat(100000) }),
+    entity("same", { name: "same", title: "a" }),
+  ]);
+  const { nodes, simulation } = createLayout(graph, 72, []);
+  const radius = (id: string) => nodes.find((n) => n.id === id)!.radius;
+  assert.ok(radius("short") < radius("medium"));
+  assert.ok(radius("medium") < radius("long"));
+  assert.ok(radius("long") <= 20);
+  assert.equal(radius("short"), radius("same"));
+  simulation.stop();
+});

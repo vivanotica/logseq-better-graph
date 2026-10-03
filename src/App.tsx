@@ -10,6 +10,7 @@ import {
 import { createGraphController, Snapshot } from "./graph/controller";
 import { loadSettings, saveSettings } from "./graph/settings";
 import { previewGraph } from "./graph/fixture";
+import { nodeColor } from "./graph/colors";
 const preview =
   import.meta.env.DEV && new URLSearchParams(location.search).has("preview");
 function GraphScreen() {
@@ -240,10 +241,28 @@ function GraphScreen() {
           )}
           <div className="graph-legend">
             <span>
-              <i className="solid" /> Parent / child
+              <i
+                className="node-page"
+                style={{ background: nodeColor("page", dark) }}
+              /> Page
             </span>
             <span>
-              <i className="dashed" /> Reference / embed
+              <i
+                className="node-block"
+                style={{ background: nodeColor("block", dark) }}
+              /> Block
+            </span>
+            <span>
+              <i
+                className="node-journal"
+                style={{ background: nodeColor("journal", dark) }}
+              /> Journal
+            </span>
+            <span>
+              <i className="solid" /> Page connections
+            </span>
+            <span>
+              <i className="dashed" /> Exploring references
             </span>
             <span>
               <i className="region" /> Tag region
@@ -290,7 +309,7 @@ function GraphScreen() {
               <h2>View mode</h2>
               <div className="mode-active">Pages & blocks</div>
               <p className="muted">
-                Original hierarchy. Fluid, overlapping tag regions.
+                Page-centered connections. Fluid, overlapping tag regions.
               </p>
             </section>
             <section>
@@ -386,6 +405,9 @@ function GraphScreen() {
                 <span>{graph?.nodes.length ?? 0} nodes</span>
                 <span>{graph?.edges.length ?? 0} links</span>
               </div>
+              <p className="muted">
+                Larger nodes contain longer titles or text.
+              </p>
               <label className="slider-label">
                 Depth <strong>{settings.depth}</strong>
                 <input
