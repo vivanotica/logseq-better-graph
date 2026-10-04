@@ -36,6 +36,7 @@ function GraphScreen() {
     [tagFocus, setTagFocus] = useState<string | null>(null),
     [fitToken, setFitToken] = useState(0),
     [error, setError] = useState("");
+  const [tagChoices, setTagChoices] = useState<string[]>([]);
   const [retry, setRetry] = useState(0);
   const [focusRequest, setFocusRequest] = useState<{
     id: string;
@@ -89,6 +90,7 @@ function GraphScreen() {
   useEffect(() => {
     setSelected([]);
     setFocusRequest(null);
+    setTagChoices([]);
     setError("");
     setNodeQuery("");
     setTagFocus(null);
@@ -118,11 +120,13 @@ function GraphScreen() {
   };
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !selected.length) close();
+      if (event.key !== "Escape") return;
+      if (tagChoices.length) setTagChoices([]);
+      else if (!selected.length) close();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selected.length]);
+  }, [selected.length, tagChoices.length]);
   const open = async (node: GraphNode) => {
     if (preview) {
       setError(
@@ -205,7 +209,16 @@ function GraphScreen() {
               focusRequest={focusRequest}
               onError={setError}
               onOpen={(node) => void open(node)}
-              onSelect={(id, add) =>
+              onSelectTags={(ids) => {
+                setSelected([]);
+                setTagFocus(null);
+                if (ids.length === 1) {
+                  updateSettings({ selectedTagIds: ids });
+                  setTagChoices([]);
+                } else setTagChoices(ids);
+              }}
+              onSelect={(id, add) => {
+                setTagChoices([]);
                 setSelected((old) =>
                   id === null
                     ? []
@@ -216,8 +229,8 @@ function GraphScreen() {
                       : old.length === 1 && old[0] === id
                         ? []
                         : [id],
-                )
-              }
+                );
+              }}
             />
           )}
           {!graph && snapshot.status === "loading" && (
@@ -290,9 +303,41 @@ function GraphScreen() {
             </span>
           </div>
           <div className="graph-hint">
-            Drag to move · Scroll to zoom · Hover to trace connections · Click
-            to select · Double-click to open
+            Drag to move · Scroll to zoom · Click a region to filter tags ·
+            Hover to trace connections · Click to select · Double-click to open
           </div>
+          {!!tagChoices.length && (
+            <div
+              className="graph-selection"
+              role="group"
+              aria-label="Choose a tag"
+            >
+              <div>
+                <strong>Choose a tag</strong>
+                <button
+                  aria-label="Cancel tag selection"
+                  onClick={() => setTagChoices([])}
+                >
+                  ×
+                </button>
+              </div>
+              {tagChoices.map((id) => {
+                const tag = tags.find((t) => t.id === id);
+                return tag ? (
+                  <button
+                    key={id}
+                    className="selected-node"
+                    onClick={() => {
+                      updateSettings({ selectedTagIds: [id] });
+                      setTagChoices([]);
+                    }}
+                  >
+                    #{tag.label}
+                  </button>
+                ) : null;
+              })}
+            </div>
+          )}
           {!!selectedNodes.length && (
             <div className="graph-selection" aria-live="polite">
               <div>
@@ -330,7 +375,8 @@ function GraphScreen() {
               <h2>View mode</h2>
               <div className="mode-active">Pages & blocks</div>
               <p className="muted">
-                Page-centered connections. Fluid, overlapping tag regions.
+                Page-centered connections. Nearby tag members form islands;
+                colored rings show shared tags.
               </p>
             </section>
             <section>

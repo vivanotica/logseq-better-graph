@@ -231,8 +231,16 @@ test("layout preserves initial positions and every member fits inside its region
     { id: "a", x: 0, y: 0, radius: 4 },
     { id: "b", x: 100, y: 100, radius: 4 },
   ]);
-  assert.ok(Math.min(...bounds.map((p) => p.x)) < 0);
-  assert.ok(Math.max(...bounds.map((p) => p.y)) > 100);
+  assert.ok(
+    Math.min(
+      ...bounds.flatMap((island) => island.rings.flat()).map((p) => p.x),
+    ) < 0,
+  );
+  assert.ok(
+    Math.max(
+      ...bounds.flatMap((island) => island.rings.flat()).map((p) => p.y),
+    ) > 100,
+  );
 });
 test("5,000 blocks are retained and layout can stop without truncation", () => {
   const entities = [
@@ -362,9 +370,11 @@ test("tag forces follow moved members and are independent of region order", () =
   const single = regionBoundary([{ id: "a", x: 0, y: 0, radius: 4 }]);
   const shifted = regionBoundary([{ id: "a", x: 50, y: 80, radius: 4 }]);
   assert.equal(single.length, shifted.length);
-  single.forEach((point, i) => {
-    assert.ok(Math.abs(shifted[i].x - point.x - 50) < 1e-10);
-    assert.ok(Math.abs(shifted[i].y - point.y - 80) < 1e-10);
+  const singlePoints = single.flatMap((island) => island.rings.flat());
+  const shiftedPoints = shifted.flatMap((island) => island.rings.flat());
+  singlePoints.forEach((point, i) => {
+    assert.ok(Math.abs(shiftedPoints[i].x - point.x - 50) < 1e-10);
+    assert.ok(Math.abs(shiftedPoints[i].y - point.y - 80) < 1e-10);
   });
 });
 

@@ -1,6 +1,7 @@
+import type { RegionBoundary } from "./graph/regions";
 import React, { useEffect, useRef } from "react";
 import { GraphData, GraphNode } from "./graph/model";
-import { Position, regionBoundary, Point } from "./graph/layout";
+import { Position, Point } from "./graph/layout";
 import { derivePages, explorePages } from "./graph/pages";
 import {
   fadeLabel,
@@ -23,6 +24,7 @@ interface Props {
   onError: (message: string) => void;
   onSelect: (id: string | null, add: boolean) => void;
   onOpen: (node: GraphNode) => void;
+  onSelectTags: (ids: string[]) => void;
 }
 function nodePath(
   ctx: CanvasRenderingContext2D,
@@ -80,17 +82,15 @@ export function GraphCanvas(props: Props) {
       hover: string | null = null;
     let pointer: Point | null = null;
     const labelFades = new Map<string, LabelFade & { text: string }>();
-    let boundaries: {
-      id: string;
-      label: string;
-      color: string;
-      points: Point[];
-    }[] = [];
+    let boundaries: RegionBoundary[] = [];
+    let regionPaths: { id: string; path: Path2D }[] = [];
+    const tagColors = new Map(graph.regions.map((r) => [r.id, r.color]));
     let exploration = explorePages(graph, pages, [], props.depth);
     let lastSelection: string[] | undefined;
     let lastDepth = 0;
     let gesture: {
       id: string | null;
+      tagIds: string[];
       x: number;
       y: number;
       startX: number;
@@ -101,18 +101,6 @@ export function GraphCanvas(props: Props) {
       graph.nodes
         .map((n) => positions.current.get(n.id))
         .filter((p): p is Position => !!p);
-    const recalc = () => {
-      boundaries = graph.regions.map((r) => ({
-        id: r.id,
-        label: r.label,
-        color: r.color,
-        points: regionBoundary(
-          r.memberIds
-            .map((id) => positions.current.get(id))
-            .filter((p): p is Position => !!p),
-        ),
-      }));
-    };
     function draw() {
       frame = 0;
       const now = performance.now();
@@ -129,7 +117,8 @@ export function GraphCanvas(props: Props) {
       const exploring = p.selected.length > 0;
       hover = pointer ? hit(pointer) : null;
       canvas.title = !exploring && hover ? (nodes.get(hover)?.label ?? "") : "";
-      canvas.style.cursor = hover ? "pointer" : "grab";
+      canvas.style.cursor =
+        hover || (pointer && hitTags(pointer).length) ? "pointer" : "grab";
       const nearby = nearbyLabels(
         positions.current.values(),
         view,
@@ -140,44 +129,53 @@ export function GraphCanvas(props: Props) {
       ctx.translate(view.x, view.y);
       ctx.scale(view.scale, view.scale);
       const occupied = new Set<string>();
+      regionPaths = [];
       for (const region of boundaries) {
-        if (!region.points.length) continue;
-        ctx.beginPath();
-        const last = region.points[region.points.length - 1];
-        const first = region.points[0];
-        ctx.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2);
-        region.points.forEach((point, i) => {
-          const next = region.points[(i + 1) % region.points.length];
-          ctx.quadraticCurveTo(
-            point.x,
-            point.y,
-            (point.x + next.x) / 2,
-            (point.y + next.y) / 2,
-          );
-        });
-        ctx.closePath();
-        ctx.fillStyle = region.color;
-        ctx.globalAlpha = p.tagFocus === region.id ? 0.17 : 0.065;
-        ctx.fill();
-        ctx.globalAlpha = p.tagFocus === region.id ? 0.8 : 0.32;
-        ctx.strokeStyle = region.color;
-        ctx.lineWidth = 1 / view.scale;
-        ctx.stroke();
-        const top = region.points.reduce((a, b) => (a.y < b.y ? a : b));
-        ctx.globalAlpha = 0.9;
-        ctx.font = `${12 / view.scale}px system-ui`;
-        const label = "# " + region.label;
-        if (
-          reserveLabel(
-            occupied,
-            top.x * view.scale + view.x,
-            top.y * view.scale + view.y - 19,
-            ctx.measureText(label).width * view.scale,
-            16,
-            p.tagFocus === region.id,
-          )
-        )
-          ctx.fillText(label, top.x, top.y - 6 / view.scale);
+        for (const island of region.islands) {
+          const path = new Path2D();
+          for (const ring of island.rings) {
+            if (!ring.length) continue;
+            const last = ring[ring.length - 1];
+            path.moveTo((last.x + ring[0].x) / 2, (last.y + ring[0].y) / 2);
+            ring.forEach((point, i) => {
+              const next = ring[(i + 1) % ring.length];
+              path.quadraticCurveTo(
+                point.x,
+                point.y,
+                (point.x + next.x) / 2,
+                (point.y + next.y) / 2,
+              );
+            });
+            path.closePath();
+          }
+          ctx.fillStyle = region.color;
+          ctx.globalAlpha = p.tagFocus === region.id ? 0.17 : 0.065;
+          ctx.fill(path, "evenodd");
+          ctx.globalAlpha = p.tagFocus === region.id ? 0.8 : 0.32;
+          ctx.strokeStyle = region.color;
+          ctx.lineWidth = 1 / view.scale;
+          ctx.stroke(path);
+          regionPaths.push({ id: region.id, path });
+          const top = island.label;
+          ctx.globalAlpha = 0.9;
+          ctx.font = `${12 / view.scale}px system-ui`;
+          const label = "# " + region.label;
+          for (const offset of [0, 18, 36]) {
+            if (
+              !reserveLabel(
+                occupied,
+                top.x * view.scale + view.x,
+                top.y * view.scale + view.y - 19 - offset,
+                ctx.measureText(label).width * view.scale,
+                16,
+              )
+            )
+              continue;
+            ctx.fillStyle = region.color;
+            ctx.fillText(label, top.x, top.y - (6 + offset) / view.scale);
+            break;
+          }
+        }
       }
       ctx.globalAlpha = 1;
       const hoverNeighbors = new Set<string>();
@@ -317,17 +315,50 @@ export function GraphCanvas(props: Props) {
         ctx.fillStyle = nodeColor(n.kind, p.dark);
         nodePath(ctx, n.kind, pos.x, pos.y, pos.radius);
         ctx.fill();
+        const colors = n.tagIds
+          .map((id) => tagColors.get(id))
+          .filter((color): color is string => !!color);
+        const multiTag = colors.length > 1;
+        if (multiTag) {
+          const arc = (Math.PI * 2) / colors.length;
+          const gap = Math.min(0.06, arc * 0.1);
+          colors.forEach((color, i) => {
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3 / view.scale;
+            ctx.arc(
+              pos.x,
+              pos.y,
+              pos.radius + 4 / view.scale,
+              i * arc - Math.PI / 2 + gap,
+              (i + 1) * arc - Math.PI / 2 - gap,
+            );
+            ctx.stroke();
+          });
+        }
         if (selected || n.id === hover) {
           ctx.strokeStyle = "#60a5fa";
           ctx.lineWidth = 2 / view.scale;
-          nodePath(ctx, n.kind, pos.x, pos.y, pos.radius + 4 / view.scale);
+          nodePath(
+            ctx,
+            multiTag ? "block" : n.kind,
+            pos.x,
+            pos.y,
+            pos.radius + (multiTag ? 9 : 4) / view.scale,
+          );
           ctx.stroke();
         }
         if (highlight?.id === n.id && now < highlight.until) {
           ctx.globalAlpha = (highlight.until - now) / 1400;
           ctx.strokeStyle = "#3b82f6";
           ctx.lineWidth = 3 / view.scale;
-          nodePath(ctx, n.kind, pos.x, pos.y, pos.radius + 10 / view.scale);
+          nodePath(
+            ctx,
+            multiTag ? "block" : n.kind,
+            pos.x,
+            pos.y,
+            pos.radius + (multiTag ? 15 : 10) / view.scale,
+          );
           ctx.stroke();
           animatingLabels = true;
         }
@@ -458,11 +489,15 @@ export function GraphCanvas(props: Props) {
       schedule();
     };
     worker.onmessage = (
-      event: MessageEvent<{ positions: Position[]; settled: boolean }>,
+      event: MessageEvent<{
+        positions: Position[];
+        settled: boolean;
+        boundaries?: RegionBoundary[];
+      }>,
     ) => {
       for (const pos of event.data.positions)
         if (gesture?.id !== pos.id) positions.current.set(pos.id, pos);
-      recalc();
+      if (event.data.boundaries) boundaries = event.data.boundaries;
       if (pendingFocus) focusNode.current();
       if (!camera.current.initialized || (fitOnSettle && event.data.settled)) {
         fit.current();
@@ -517,6 +552,20 @@ export function GraphCanvas(props: Props) {
       }
       return best;
     };
+    const hitTags = (point: Point) => {
+      const w = world(point);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const ids = [
+        ...new Set(
+          regionPaths
+            .filter(({ path }) => ctx.isPointInPath(path, w.x, w.y, "evenodd"))
+            .map(({ id }) => id),
+        ),
+      ];
+      ctx.restore();
+      return ids;
+    };
     const down = (e: PointerEvent) => {
       if (e.button !== 0) return;
       fitOnSettle = false;
@@ -525,6 +574,7 @@ export function GraphCanvas(props: Props) {
       pointer = p;
       gesture = {
         id: hit(p),
+        tagIds: hitTags(p),
         x: p.x,
         y: p.y,
         startX: p.x,
@@ -551,7 +601,6 @@ export function GraphCanvas(props: Props) {
               ...w,
               release: false,
             });
-            recalc();
           } else {
             camera.current.x += p.x - gesture.x;
             camera.current.y += p.y - gesture.y;
@@ -575,8 +624,11 @@ export function GraphCanvas(props: Props) {
       if (g.id && g.moved) {
         const pos = positions.current.get(g.id)!;
         worker.postMessage({ type: "drag", ...pos, release: true });
-      } else if (!g.moved)
-        latest.current.onSelect(g.id, e.shiftKey || e.metaKey || e.ctrlKey);
+      } else if (!g.moved) {
+        if (!g.id && g.tagIds.length) latest.current.onSelectTags(g.tagIds);
+        else
+          latest.current.onSelect(g.id, e.shiftKey || e.metaKey || e.ctrlKey);
+      }
       if (canvas.hasPointerCapture(e.pointerId))
         canvas.releasePointerCapture(e.pointerId);
     };
@@ -628,7 +680,6 @@ export function GraphCanvas(props: Props) {
     canvas.addEventListener("dblclick", dbl);
     canvas.addEventListener("wheel", wheel, { passive: false });
     canvas.addEventListener("keydown", key);
-    recalc();
     schedule();
     return () => {
       worker.terminate();

@@ -1,6 +1,9 @@
+import { buildRegionBoundaries } from "./regions";
 import { createLayout, Position } from "./layout";
 import { GraphData } from "./model";
 let layout: ReturnType<typeof createLayout> | undefined;
+let regions: GraphData["regions"] = [];
+let lastBoundaryAt = -Infinity;
 let timer: ReturnType<typeof setTimeout> | undefined;
 function tick() {
   if (!layout) return;
@@ -11,14 +14,22 @@ function tick() {
     performance.now() - started < 12 &&
     layout.simulation.alpha() > 0.015
   );
+  const settled = layout.simulation.alpha() <= 0.015;
+  const now = performance.now();
+  const boundaries =
+    settled || now - lastBoundaryAt >= 120
+      ? buildRegionBoundaries(regions, layout.nodes)
+      : undefined;
+  if (boundaries) lastBoundaryAt = performance.now();
   self.postMessage({
+    boundaries,
     positions: layout.nodes.map(({ id, x, y, radius }) => ({
       id,
       x,
       y,
       radius,
     })),
-    settled: layout.simulation.alpha() <= 0.015,
+    settled,
   });
   timer = undefined;
   if (layout.simulation.alpha() > 0.015) timer = setTimeout(tick, 24);
@@ -34,6 +45,8 @@ self.onmessage = (
   if (data.type === "load") {
     clearTimeout(timer);
     layout?.simulation.stop();
+    regions = data.graph.regions;
+    lastBoundaryAt = -Infinity;
     layout = createLayout(data.graph, data.distance, data.previous);
     tick();
   } else if (data.type === "distance") {
