@@ -26,6 +26,7 @@ function tick() {
 self.onmessage = (
   event: MessageEvent<
     | { type: "load"; graph: GraphData; distance: number; previous: Position[] }
+    | { type: "distance"; distance: number }
     | { type: "drag"; id: string; x: number; y: number; release: boolean }
   >,
 ) => {
@@ -35,6 +36,9 @@ self.onmessage = (
     layout?.simulation.stop();
     layout = createLayout(data.graph, data.distance, data.previous);
     tick();
+  } else if (data.type === "distance") {
+    layout?.setDistance(data.distance);
+    if (layout && timer === undefined) tick();
   } else if (layout) {
     const n = layout.nodes.find((n) => n.id === data.id);
     if (n) {

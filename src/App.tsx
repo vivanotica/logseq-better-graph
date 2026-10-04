@@ -37,6 +37,10 @@ function GraphScreen() {
     [fitToken, setFitToken] = useState(0),
     [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const [focusRequest, setFocusRequest] = useState<{
+    id: string;
+    token: number;
+  } | null>(null);
   const settings = useMemo(
     () =>
       settingsState.key === snapshot.graphKey
@@ -84,13 +88,20 @@ function GraphScreen() {
   }, []);
   useEffect(() => {
     setSelected([]);
+    setFocusRequest(null);
     setError("");
     setNodeQuery("");
     setTagFocus(null);
   }, [snapshot.graphKey]);
   const graph = useMemo(
-    () => (snapshot.data ? filterGraph(snapshot.data, settings) : null),
-    [snapshot.data, settings],
+    () =>
+      snapshot.data
+        ? filterGraph(snapshot.data, {
+            selectedTagIds: settings.selectedTagIds,
+            showJournals: settings.showJournals,
+          })
+        : null,
+    [snapshot.data, settings.selectedTagIds, settings.showJournals],
   );
   const selectedNodes =
     graph?.nodes.filter((n) => selected.includes(n.id)) ?? [];
@@ -191,6 +202,7 @@ function GraphScreen() {
               dark={dark}
               tagFocus={tagFocus}
               fitToken={fitToken}
+              focusRequest={focusRequest}
               onError={setError}
               onOpen={(node) => void open(node)}
               onSelect={(id, add) =>
@@ -244,33 +256,42 @@ function GraphScreen() {
               <i
                 className="node-page"
                 style={{ background: nodeColor("page", dark) }}
-              /> Page
+              />{" "}
+              Page
             </span>
             <span>
               <i
                 className="node-block"
                 style={{ background: nodeColor("block", dark) }}
-              /> Block
+              />{" "}
+              Block
             </span>
             <span>
               <i
                 className="node-journal"
                 style={{ background: nodeColor("journal", dark) }}
-              /> Journal
+              />{" "}
+              Journal
             </span>
             <span>
-              <i className="solid" /> Page connections
+              <i className="solid" /> Page connections →
             </span>
             <span>
-              <i className="dashed" /> Exploring references
+              <i className="reference-line" /> Reference →
+            </span>
+            <span>
+              <i className="embed-line" /> Embed →
+            </span>
+            <span>
+              <i className="hierarchy-line" /> Parent–child
             </span>
             <span>
               <i className="region" /> Tag region
             </span>
           </div>
           <div className="graph-hint">
-            Drag to move · Scroll to zoom · Click to select · Double-click to
-            open
+            Drag to move · Scroll to zoom · Hover to trace connections · Click
+            to select · Double-click to open
           </div>
           {!!selectedNodes.length && (
             <div className="graph-selection" aria-live="polite">
@@ -324,7 +345,16 @@ function GraphScreen() {
               {!!matches?.length && (
                 <div className="node-results">
                   {matches.map((n) => (
-                    <button key={n.id} onClick={() => setSelected([n.id])}>
+                    <button
+                      key={n.id}
+                      onClick={() => {
+                        setSelected([n.id]);
+                        setFocusRequest((old) => ({
+                          id: n.id,
+                          token: (old?.token ?? 0) + 1,
+                        }));
+                      }}
+                    >
                       {n.label}
                       <small>{n.kind}</small>
                     </button>

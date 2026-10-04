@@ -279,8 +279,15 @@ body {
 .graph-legend .solid {
   border-top: 1px solid #94a3b8;
 }
-.graph-legend .dashed {
-  border-top: 1px dashed #94a3b8;
+.graph-legend .reference-line {
+  border-top: 2px dashed #3b82f6;
+}
+.graph-legend .embed-line {
+  border-top: 2px dotted #a855f7;
+}
+.graph-legend .hierarchy-line {
+  border-top: 1px solid #94a3b8;
+  opacity: 0.6;
 }
 .graph-legend .region {
   height: 10px;

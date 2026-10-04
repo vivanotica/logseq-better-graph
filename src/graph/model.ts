@@ -212,7 +212,7 @@ export function buildGraph(entities: Entity[]): GraphData {
 }
 export function filterGraph(
   graph: GraphData,
-  settings: GraphSettings,
+  settings: Pick<GraphSettings, "selectedTagIds" | "showJournals">,
 ): GraphData {
   const all = new Map(graph.nodes.map((n) => [n.id, n]));
   const selected =

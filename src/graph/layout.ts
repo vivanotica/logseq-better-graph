@@ -74,21 +74,15 @@ export function createLayout(
     .radius((n) => clusterRadius(n.id))
     .strength(0.8);
   pageCollision.initialize(pageNodes, Math.random);
+  const linkForce = forceLink<LayoutNode, (typeof links)[number]>(links)
+    .id((n) => n.id)
+    .distance((e) => (e.kind === "hierarchy" ? distance * 0.65 : e.span))
+    .strength((e) =>
+      e.kind === "page-reference" || e.kind === "hierarchy" ? 0.6 : 0.025,
+    );
   const simulation = forceSimulation(nodes)
     .stop()
-    .force(
-      "link",
-      forceLink<LayoutNode, (typeof links)[number]>(links)
-        .id((n) => n.id)
-        .distance((e) => (e.kind === "hierarchy" ? distance * 0.65 : e.span))
-        .strength((e) =>
-          e.kind === "page-reference"
-            ? 0.6
-            : e.kind === "hierarchy"
-              ? 0.6
-              : 0.025,
-        ),
-    )
+    .force("link", linkForce)
     .force(
       "charge",
       forceManyBody<LayoutNode>().strength(-140).distanceMax(420),
@@ -135,7 +129,20 @@ export function createLayout(
         n.vy = (n.vy ?? 0) + (pull.y / pull.count) * 0.025 * alpha;
       }
     });
-  return { simulation, nodes };
+  const initialDistance = distance;
+  function setDistance(next: number) {
+    distance = next;
+    // d3 caches link distances; reset the accessor without replacing nodes or velocities.
+    linkForce.distance((e) =>
+      e.kind === "hierarchy"
+        ? distance * 0.65
+        : e.kind === "page-reference"
+          ? e.span - initialDistance + distance
+          : distance,
+    );
+    simulation.alpha(Math.max(simulation.alpha(), 0.2));
+  }
+  return { simulation, nodes, setDistance };
 }
 export interface Point {
   x: number;

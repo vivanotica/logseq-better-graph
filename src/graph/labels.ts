@@ -67,3 +67,18 @@ export function fadeLabel(
   }
   return opacity;
 }
+
+// Try nearby baselines before accepting overlap: page titles must never disappear.
+export function placePageLabel(
+  occupied: Set<string>,
+  x: number,
+  y: number,
+  width: number,
+): { x: number; y: number } {
+  for (const offset of [0, -18, 18, -36, 36]) {
+    if (reserveLabel(occupied, x, y + offset - 13, width))
+      return { x, y: y + offset };
+  }
+  reserveLabel(occupied, x, y - 13, width, 16, true);
+  return { x, y };
+}

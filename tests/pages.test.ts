@@ -116,3 +116,38 @@ test("page membership force follows page movement while leaving orphan blocks in
   );
   layout.simulation.stop();
 });
+
+test("distance updates keep simulation identity, positions, velocity and pinned nodes", () => {
+  const layout = createLayout(fixture(), 72, []);
+  layout.simulation.tick(10);
+  layout.nodes[0].fx = layout.nodes[0].x;
+  layout.nodes[0].fy = layout.nodes[0].y;
+  const simulation = layout.simulation;
+  const nodes = [...layout.nodes];
+  const before = structuredClone(layout.nodes);
+  const links = simulation.force("link") as import("d3-force").ForceLink<
+    import("../src/graph/layout").LayoutNode,
+    any
+  >;
+  const distances = () =>
+    links.links().map((link, index, all) => links.distance()(link, index, all));
+  const initial = distances();
+  layout.simulation.alpha(0.01);
+  layout.setDistance(120);
+  assert.equal(layout.simulation, simulation);
+  assert.deepEqual(layout.nodes, before);
+  layout.nodes.forEach((node, i) => assert.equal(node, nodes[i]));
+  assert.equal(layout.simulation.alpha(), 0.2);
+  links.links().forEach((link, i) => {
+    assert.ok(
+      Math.abs(
+        distances()[i] -
+          initial[i] -
+          (link.kind === "hierarchy" ? 48 * 0.65 : 48),
+      ) < 1e-8,
+    );
+  });
+  layout.setDistance(72);
+  assert.deepEqual(distances(), initial);
+  layout.simulation.stop();
+});
