@@ -11,6 +11,7 @@ import { createGraphController, Snapshot } from "./graph/controller";
 import { loadSettings, saveSettings } from "./graph/settings";
 import { previewGraph } from "./graph/fixture";
 import { nodeColor } from "./graph/colors";
+import { partitionTags, selectedNodeDetails } from "./graph/menu";
 const preview =
   import.meta.env.DEV && new URLSearchParams(location.search).has("preview");
 function GraphScreen() {
@@ -29,6 +30,7 @@ function GraphScreen() {
     value: GraphSettings;
   }>({ key: "", value: defaultSettings });
   const [selected, setSelected] = useState<string[]>([]),
+    [selectedDetailId, setSelectedDetailId] = useState<string | null>(null),
     [dark, setDark] = useState(false),
     [panel, setPanel] = useState(true),
     [tagQuery, setTagQuery] = useState(""),
@@ -89,6 +91,7 @@ function GraphScreen() {
   }, []);
   useEffect(() => {
     setSelected([]);
+    setSelectedDetailId(null);
     setFocusRequest(null);
     setTagChoices([]);
     setError("");
@@ -105,8 +108,20 @@ function GraphScreen() {
         : null,
     [snapshot.data, settings.selectedTagIds, settings.showJournals],
   );
-  const selectedNodes =
-    graph?.nodes.filter((n) => selected.includes(n.id)) ?? [];
+  const selectionDetails = useMemo(
+    () => (graph ? selectedNodeDetails(graph, selected) : []),
+    [graph, selected],
+  );
+  const activeDetail =
+    selectionDetails.find(({ node }) => node.id === selectedDetailId) ??
+    selectionDetails[0];
+  const tagGroups = useMemo(
+    () =>
+      snapshot.data
+        ? partitionTags(snapshot.data)
+        : { builtIn: [], user: [] },
+    [snapshot.data],
+  );
   useEffect(() => {
     if (graph)
       setSelected((old) => {
@@ -145,10 +160,10 @@ function GraphScreen() {
       setError(`Could not open node: ${String(e)}`);
     }
   };
-  const tags = snapshot.data?.regions ?? [];
-  const selectedTags = new Set(
-    settings.selectedTagIds ?? tags.map((t) => t.id),
-  );
+  const tags = tagGroups.user;
+  const builtInTags = tagGroups.builtIn;
+  const allTags = [...tags, ...builtInTags];
+  const selectedTags = new Set(settings.selectedTagIds ?? allTags.map((t) => t.id));
   const matches = nodeQuery.trim()
     ? graph?.nodes
         .filter((n) =>
@@ -311,7 +326,7 @@ function GraphScreen() {
           </div>
           <div className="graph-hint">
             Drag to move · Scroll to zoom · Click a region to filter tags ·
-            Hover to trace connections · Click to select · Double-click to open
+            Click to select · Double-click to open
           </div>
           {!!tagChoices.length && (
             <div
@@ -319,8 +334,10 @@ function GraphScreen() {
               role="group"
               aria-label="Choose a tag"
             >
-              <div>
-                <strong>Choose a tag</strong>
+              <div className="selection-header">
+                <div>
+                  <strong>Choose a tag</strong>
+                </div>
                 <button
                   aria-label="Cancel tag selection"
                   onClick={() => setTagChoices([])}
@@ -345,10 +362,17 @@ function GraphScreen() {
               })}
             </div>
           )}
-          {!!selectedNodes.length && (
-            <div className="graph-selection" aria-live="polite">
-              <div>
-                <strong>{selectedNodes.length} selected</strong>
+          {activeDetail && (
+            <div
+              className="graph-selection"
+              aria-live="polite"
+              aria-label="Selected node details"
+            >
+              <div className="selection-header">
+                <div>
+                  <small>NODE DETAILS</small>
+                  <strong>{selectionDetails.length} selected</strong>
+                </div>
                 <button
                   aria-label="Clear selection"
                   onClick={() => setSelected([])}
@@ -356,23 +380,75 @@ function GraphScreen() {
                   ×
                 </button>
               </div>
-              {selectedNodes.map((n) => (
+              <article className="selection-detail">
+                <div className="selection-meta">
+                  <span
+                    className={`selection-kind kind-${activeDetail.node.kind}`}
+                    style={{
+                      color: nodeColor(activeDetail.node.kind, dark),
+                    }}
+                  >
+                    {activeDetail.node.kind}
+                  </span>
+                  <span className="selection-connections">
+                    {activeDetail.connectionCount} direct{" "}
+                    {activeDetail.connectionCount === 1
+                      ? "connection"
+                      : "connections"}
+                  </span>
+                </div>
+                <h3>{activeDetail.node.label}</h3>
+                <div className="selection-page">
+                  <small>PAGE</small>
+                  <span>
+                    {activeDetail.node.kind === "page" ||
+                    activeDetail.node.kind === "journal"
+                      ? "Current page"
+                      : activeDetail.pageLabel || "No page association"}
+                  </span>
+                </div>
+                <div className="selection-tags">
+                  <small>TAGS</small>
+                  <div>
+                    {activeDetail.tags.length ? (
+                      activeDetail.tags.map((tag) => (
+                        <span className="selection-tag" key={tag}>
+                          #{tag}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="selection-empty">No direct tags</span>
+                    )}
+                  </div>
+                </div>
                 <button
-                  className="selected-node"
-                  key={n.id}
-                  onClick={() => void open(n)}
+                  className="selection-open"
+                  onClick={() => void open(activeDetail.node)}
                 >
-                  {n.label}
-                  <span>↗</span>
+                  Open in Logseq <span aria-hidden="true">↗</span>
                 </button>
-              ))}
-              <p>
-                {selectedNodes[0].tagIds
-                  .map((t) => tags.find((r) => r.id === t)?.label)
-                  .filter(Boolean)
-                  .map((label) => "#" + label)
-                  .join(" · ") || "No direct tags"}
-              </p>
+              </article>
+              {selectionDetails.length > 1 && (
+                <div className="selection-list" aria-label="Selected nodes">
+                  {selectionDetails.map(({ node }) => (
+                    <button
+                      key={node.id}
+                      className={
+                        node.id === activeDetail.node.id ? "active" : ""
+                      }
+                      aria-pressed={node.id === activeDetail.node.id}
+                      onClick={() => setSelectedDetailId(node.id)}
+                    >
+                      <span
+                        className={`selection-dot kind-${node.kind}`}
+                        style={{ background: nodeColor(node.kind, dark) }}
+                      />
+                      <span>{node.label}</span>
+                      <small>{node.kind}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -402,6 +478,7 @@ function GraphScreen() {
                       key={n.id}
                       onClick={() => {
                         setSelected([n.id]);
+                        setSelectedDetailId(n.id);
                         setFocusRequest((old) => ({
                           id: n.id,
                           token: (old?.token ?? 0) + 1,
@@ -420,10 +497,10 @@ function GraphScreen() {
             </section>
             <section>
               <h2>
-                Displayed tags{" "}
+                Tags{" "}
                 <small>
-                  {tags.filter((t) => selectedTags.has(t.id)).length}/
-                  {tags.length}
+                  {allTags.filter((t) => selectedTags.has(t.id)).length}/
+                  {allTags.length}
                 </small>
               </h2>
               <input
@@ -442,6 +519,10 @@ function GraphScreen() {
                 <button onClick={() => updateSettings({ selectedTagIds: [] })}>
                   Clear
                 </button>
+              </div>
+              <div className="tag-group-heading">
+                <strong>My tags</strong>
+                <small>{tags.length}</small>
               </div>
               <div className="tag-list">
                 {tags
@@ -475,10 +556,29 @@ function GraphScreen() {
                     </label>
                   ))}
               </div>
-              <p className="muted">
-                Select all also includes untagged nodes. Hover a tag to
-                highlight actual members.
-              </p>
+              <div className="tag-group-heading default-tags-heading">
+                <strong>Default tags</strong>
+                <small>{builtInTags.length}</small>
+              </div>
+              <div className="tag-list" aria-label="Default tags">
+                {builtInTags.map((tag) => (
+                  <label className="tag-row" key={tag.id}>
+                    <input
+                      type="checkbox"
+                      checked={selectedTags.has(tag.id)}
+                      onChange={() => {
+                        const next = new Set(selectedTags);
+                        if (next.has(tag.id)) next.delete(tag.id);
+                        else next.add(tag.id);
+                        updateSettings({ selectedTagIds: [...next] });
+                      }}
+                    />
+                    <i style={{ background: tag.color }} />
+                    <span>{tag.label}</span>
+                    <small>{tag.memberIds.length}</small>
+                  </label>
+                ))}
+              </div>
             </section>
             <section>
               <h2>

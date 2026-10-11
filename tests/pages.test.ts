@@ -64,6 +64,22 @@ test("page connections aggregate directions and preserve original edges", () => 
     0,
   );
 });
+test("unchecking a tag removes its members and unrelated siblings", () => {
+  const graph = fixture();
+  const filtered = filterGraph(graph, {
+    ...defaultSettings,
+    selectedTagIds: [],
+  });
+  assert.deepEqual(filtered.nodes, []);
+  assert.deepEqual(filtered.edges, []);
+
+  const selected = filterGraph(graph, {
+    ...defaultSettings,
+    selectedTagIds: ["tag"],
+  });
+  assert.deepEqual(selected.nodes.map(({ id }) => id), ["a"]);
+  assert.deepEqual(selected.edges, []);
+});
 test("ownership prefers valid pages and handles missing owners and cycles", () => {
   const graph = fixture();
   graph.nodes.push(

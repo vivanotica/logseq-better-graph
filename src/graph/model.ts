@@ -38,6 +38,7 @@ export interface TagRegion {
   label: string;
   memberIds: string[];
   color: string;
+  builtIn?: boolean;
 }
 export interface GraphData {
   nodes: GraphNode[];
@@ -61,6 +62,23 @@ const hiddenClasses = new Set(
     (s) => `logseq.class/${s}`,
   ),
 );
+// Logseq built-in classes that can meaningfully categorize graph nodes.
+// Keep this in sync with logseq.db.frontend.class/built-in-classes, excluding
+// structural/internal classes (Root, Tag, Property, Page, Asset, Comments).
+export const builtInTagClasses = new Set([
+  "logseq.class/Journal",
+  "logseq.class/Whiteboard",
+  "logseq.class/Task",
+  "logseq.class/Comment",
+  "logseq.class/Query",
+  "logseq.class/Card",
+  "logseq.class/Cards",
+  "logseq.class/Code-block",
+  "logseq.class/Quote-block",
+  "logseq.class/Math-block",
+  "logseq.class/Pdf-annotation",
+  "logseq.class/Template",
+]);
 const colors = [
   "#8b5cf6",
   "#0ea5e9",
@@ -119,12 +137,32 @@ export function buildGraph(entities: Entity[]): GraphData {
   );
   const tags = new Set(
     [...allowed.values()]
-      .filter((e) => classIdents(e).includes("logseq.class/Tag"))
+      .filter(
+        (e) =>
+          classIdents(e).includes("logseq.class/Tag") ||
+          builtInTagClasses.has(e.ident ?? ""),
+      )
       .map((e) => e.id),
   );
   const nodeIds = new Set<string>();
   const expanded = new Set<string>();
   const edges = new Map<string, GraphEdge>();
+  const classTagMembers = new Map<string, string[]>();
+  for (const entity of allowed.values()) {
+    const entityClasses = classIdents(entity);
+    for (const classEntity of allowed.values()) {
+      if (!builtInTagClasses.has(classEntity.ident ?? "")) continue;
+      const hasClassMembership = entity.tags.includes(classEntity.id);
+      const hasInheritedMembership = classIdents(classEntity).some((ident) =>
+        entityClasses.includes(ident),
+      );
+      if (hasClassMembership || hasInheritedMembership) {
+        const members = classTagMembers.get(classEntity.id) ?? [];
+        members.push(entity.id);
+        classTagMembers.set(classEntity.id, members);
+      }
+    }
+  }
   function addPath(id: string) {
     const seen = new Set<string>();
     let current = allowed.get(id);
@@ -196,7 +234,14 @@ export function buildGraph(entities: Entity[]): GraphData {
         ? (e.parentId ?? (e.pageId !== id ? e.pageId : undefined))
         : undefined,
       pageId: e.pageId,
-      tagIds: e.tags.filter((t) => tags.has(t)),
+      tagIds: [
+        ...new Set([
+          ...e.tags.filter((t) => tags.has(t)),
+          ...[...classTagMembers].flatMap(([tagId, memberIds]) =>
+            memberIds.includes(e.id) ? [tagId] : [],
+          ),
+        ]),
+      ],
     };
   });
   const members = new Map<string, string[]>();
@@ -209,8 +254,11 @@ export function buildGraph(entities: Entity[]): GraphData {
   const regions = [...tags].map((id) => ({
     id,
     label: allowed.get(id)!.title,
-    memberIds: members.get(id) ?? [],
+    memberIds: [
+      ...new Set([...(members.get(id) ?? []), ...(classTagMembers.get(id) ?? [])]),
+    ],
     color: tagColor(id),
+    builtIn: builtInTagClasses.has(allowed.get(id)!.ident ?? ""),
   }));
   return { nodes, edges: [...edges.values()], regions };
 }
@@ -252,12 +300,10 @@ export function filterGraph(
   for (const n of graph.nodes) {
     if (!eligible.has(n.id)) continue;
     if (selected !== null && !n.tagIds.some((t) => selected.has(t))) continue;
-    let current: GraphNode | undefined = n;
-    while (current && eligible.has(current.id) && !ids.has(current.id)) {
-      ids.add(current.id);
-      current = all.get(current.parentId ?? "");
-    }
+    ids.add(n.id);
   }
+  // Tag filtering is strict: untagged parents/pages and link endpoints do not
+  // remain as context when their tags are not selected.
   return {
     nodes: graph.nodes.filter((n) => ids.has(n.id)),
     edges: graph.edges.filter((e) => ids.has(e.source) && ids.has(e.target)),

@@ -19,6 +19,9 @@ export function previewGraph() {
   return buildGraph([
     entity("class", "Tag", { ident: "logseq.class/Tag", name: "tag" }),
     entity("assetClass", "Asset", { ident: "logseq.class/Asset" }),
+    entity("codeClass", "Code", { ident: "logseq.class/Code-block" }),
+    entity("mathClass", "Math", { ident: "logseq.class/Math-block" }),
+    entity("quoteClass", "Quote", { ident: "logseq.class/Quote-block" }),
     entity("research", "Research", { name: "research", tags: ["class"] }),
     entity("ideas", "Ideas", { name: "ideas", tags: ["class"] }),
     entity("A", "Knowledge systems", {
@@ -35,13 +38,13 @@ export function previewGraph() {
       parentId: "a0",
       pageId: "A",
       refs: ["B", "b2"],
-      tags: ["research", "ideas"],
+      tags: ["research", "ideas", "codeClass"],
     }),
     entity("b0", "Connections", { parentId: "B", pageId: "B" }),
     entity("b2", "A block is a node of its own", {
       parentId: "b0",
       pageId: "B",
-      tags: ["ideas"],
+      tags: ["ideas", "quoteClass"],
     }),
     entity("c1", "Embedded original", {
       parentId: "C",

@@ -105,9 +105,13 @@ test("multi-tag regions share one node, do not inherit page tags, and filters ke
     ...defaultSettings,
     selectedTagIds: ["t2"],
   });
-  for (const id of ["a1", "parent", "A", "b2", "B"])
+  for (const id of ["a1"])
     assert.ok(filtered.nodes.some((n) => n.id === id));
+  assert.ok(!filtered.nodes.some((n) => ["A", "parent"].includes(n.id)));
   assert.ok(!filtered.nodes.some((n) => n.id === "embed"));
+  assert.ok(filtered.nodes.some((n) => n.id === "a1"));
+  assert.ok(filtered.nodes.some((n) => n.id === "b2"));
+  assert.ok(!filtered.nodes.some((n) => n.id === "B"));
   assert.equal(filtered.regions.length, 1);
   assert.equal(
     filterGraph(g, { ...defaultSettings, selectedTagIds: [] }).nodes.length,
@@ -116,6 +120,50 @@ test("multi-tag regions share one node, do not inherit page tags, and filters ke
   assert.ok(
     filterGraph(g, defaultSettings).nodes.some((n) => n.id === "embed"),
   );
+});
+test("Logseq user-facing built-in classes appear as selectable tag regions", () => {
+  const builtIns = [
+    ["journalClass", "Journal", "logseq.class/Journal"],
+    ["taskClass", "Task", "logseq.class/Task"],
+    ["commentClass", "Comment", "logseq.class/Comment"],
+    ["queryClass", "Query", "logseq.class/Query"],
+    ["cardClass", "Card", "logseq.class/Card"],
+    ["cardsClass", "Cards", "logseq.class/Cards"],
+    ["codeClass", "Code", "logseq.class/Code-block"],
+    ["mathClass", "Math", "logseq.class/Math-block"],
+    ["quoteClass", "Quote", "logseq.class/Quote-block"],
+    ["pdfAnnotationClass", "PDF Annotation", "logseq.class/Pdf-annotation"],
+    ["templateClass", "Template", "logseq.class/Template"],
+  ] as const;
+  const g = buildGraph([
+    entity("page", { name: "page" }),
+    ...builtIns.map(([id, title, ident]) => entity(id, { title, ident })),
+    ...builtIns.map(([id, title], index) =>
+      entity(`node-${index}`, {
+        title,
+        pageId: "page",
+        parentId: "page",
+        tags: [id],
+      }),
+    ),
+  ]);
+  assert.deepEqual(
+    g.regions.map(({ label, builtIn }) => [label, builtIn]).sort(),
+    ["Card", "Cards", "Code", "Comment", "Journal", "Math", "PDF Annotation", "Query", "Quote", "Task", "Template"]
+      .map((label) => [label, true])
+      .sort(),
+  );
+  assert.deepEqual(
+    g.regions.map(({ memberIds }) => memberIds.length).sort(),
+    Array.from({ length: builtIns.length }, () => 1),
+  );
+  const codeTagId = g.regions.find(({ label }) => label === "Code")!.id;
+  const filtered = filterGraph(g, { ...defaultSettings, selectedTagIds: [codeTagId] });
+  const codeNodeId = g.nodes.find(({ label }) => label === "Code")!.id;
+  assert.ok(filtered.nodes.some(({ id }) => id === codeNodeId));
+  assert.equal(filtered.nodes.filter(({ kind }) => kind === "block").length, 1);
+  assert.ok(filtered.regions.every(({ id }) => id === codeTagId));
+  assert.ok(!g.regions.some(({ label }) => label === "Comments"));
 });
 test("visibility exclusions apply to ancestors and containing pages", () => {
   for (const flag of ["hidden", "deleted", "excluded"] as const) {
