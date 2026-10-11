@@ -3,13 +3,7 @@ import React, { useEffect, useRef } from "react";
 import { GraphData, GraphNode } from "./graph/model";
 import { Position, Point } from "./graph/layout";
 import { derivePages, explorePages } from "./graph/pages";
-import {
-  fadeLabel,
-  LabelFade,
-  nearbyLabels,
-  reserveLabel,
-  placePageLabel,
-} from "./graph/labels";
+import { reserveLabel, placePageLabel } from "./graph/labels";
 import { edgeCurve, edgeLanes } from "./graph/edges";
 import { nodeColor } from "./graph/colors";
 interface Props {
@@ -44,6 +38,15 @@ function nodePath(
     ctx.lineTo(x, y + radius);
     ctx.lineTo(x - radius, y);
     ctx.closePath();
+  } else if (kind === "asset") {
+    for (let side = 0; side < 6; side++) {
+      const angle = -Math.PI / 2 + (side * Math.PI) / 3;
+      const px = x + radius * Math.cos(angle);
+      const py = y + radius * Math.sin(angle);
+      if (side === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
   } else {
     ctx.arc(x, y, radius, 0, Math.PI * 2);
   }
@@ -75,13 +78,12 @@ export function GraphCanvas(props: Props) {
     );
     workerRef.current = worker;
     let pendingFocus = false;
-    let highlight: { id: string; until: number } | null = null;
-    let width = 1,
-      height = 1,
-      frame = 0,
-      hover: string | null = null;
-    let pointer: Point | null = null;
-    const labelFades = new Map<string, LabelFade & { text: string }>();
+    let highlight: { id: string } | null = null;
+    // A graph/filter change recreates this effect but retains the camera.
+    // Start with the actual size so the first observer callback does not pan it.
+    let width = canvas.clientWidth,
+      height = canvas.clientHeight,
+      frame = 0;
     let boundaries: RegionBoundary[] = [];
     let regionPaths: { id: string; path: Path2D }[] = [];
     const tagColors = new Map(graph.regions.map((r) => [r.id, r.color]));
@@ -103,8 +105,6 @@ export function GraphCanvas(props: Props) {
         .filter((p): p is Position => !!p);
     function draw() {
       frame = 0;
-      const now = performance.now();
-      let animatingLabels = false;
       const p = latest.current,
         view = camera.current,
         dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -115,15 +115,8 @@ export function GraphCanvas(props: Props) {
       }
       const active = exploration.nodes;
       const exploring = p.selected.length > 0;
-      hover = pointer ? hit(pointer) : null;
-      canvas.title = !exploring && hover ? (nodes.get(hover)?.label ?? "") : "";
-      canvas.style.cursor =
-        hover || (pointer && hitTags(pointer).length) ? "pointer" : "grab";
-      const nearby = nearbyLabels(
-        positions.current.values(),
-        view,
-        exploring ? null : pointer,
-      );
+      canvas.title = "";
+      canvas.style.cursor = "grab";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
       ctx.translate(view.x, view.y);
@@ -178,47 +171,30 @@ export function GraphCanvas(props: Props) {
         }
       }
       ctx.globalAlpha = 1;
-      const hoverNeighbors = new Set<string>();
-      if (hover) {
-        hoverNeighbors.add(hover);
-        for (const edge of edges) {
-          if (edge.source === hover) hoverNeighbors.add(edge.target);
-          if (edge.target === hover) hoverNeighbors.add(edge.source);
-        }
-      }
       // Direct connections are painted last so background lines cannot obscure them.
-      const incident = (e: { source: string; target: string }) =>
-        hover !== null && (e.source === hover || e.target === hover);
-      for (const e of [...edges].sort(
-        (a, b) => Number(incident(a)) - Number(incident(b)),
-      )) {
+      for (const e of edges) {
         const representative = e.kind === "page-reference";
         if (
           !representative &&
           e.kind !== "hierarchy" &&
-          !exploration.edgeIds.has(e.id) &&
-          !incident(e)
+          !exploration.edgeIds.has(e.id)
         )
           continue;
         const a = positions.current.get(e.source),
           b = positions.current.get(e.target);
         if (!a || !b) continue;
         const highlighted =
-          incident(e) ||
-          (!representative && exploring && exploration.edgeIds.has(e.id));
+          !representative && exploring && exploration.edgeIds.has(e.id);
         const hierarchy = e.kind === "hierarchy";
-        ctx.globalAlpha =
-          hover && !incident(e)
-            ? 0.08
-            : highlighted
-              ? 0.95
-              : representative
-                ? exploring
-                  ? 0.14
-                  : 0.6
-                : hierarchy
-                  ? 0.22
-                  : 0.8;
+        ctx.globalAlpha = highlighted
+          ? 0.95
+          : representative
+            ? exploring
+              ? 0.14
+              : 0.6
+            : hierarchy
+              ? 0.22
+              : 0.8;
         ctx.strokeStyle =
           e.kind === "embed"
             ? p.dark
@@ -232,8 +208,7 @@ export function GraphCanvas(props: Props) {
                 ? "#94a3b8"
                 : "#64748b";
         ctx.lineWidth =
-          (incident(e) ? 2.5 : highlighted ? 1.8 : representative ? 1.6 : 0.8) /
-          view.scale;
+          (highlighted ? 1.8 : representative ? 1.6 : 0.8) / view.scale;
         ctx.setLineDash(
           e.kind === "reference"
             ? [6 / view.scale, 4 / view.scale]
@@ -284,10 +259,7 @@ export function GraphCanvas(props: Props) {
             Number(p.selected.includes(b.id)) -
             Number(p.selected.includes(a.id))
           );
-        return (
-          Number(b.id === hover) - Number(a.id === hover) ||
-          (nearby.get(a.id) ?? Infinity) - (nearby.get(b.id) ?? Infinity)
-        );
+        return 0;
       });
       const labelsToDraw: {
         text: string;
@@ -302,16 +274,12 @@ export function GraphCanvas(props: Props) {
         const sx = pos.x * view.scale + view.x,
           sy = pos.y * view.scale + view.y;
         if (sx < -150 || sy < -50 || sx > width + 150 || sy > height + 50) {
-          labelFades.delete(n.id);
           continue;
         }
         const selected = p.selected.includes(n.id),
           focused = !p.tagFocus || n.tagIds.includes(p.tagFocus);
-        ctx.globalAlpha = hoverNeighbors.has(n.id)
-          ? 1
-          : !focused || (exploring && !active.has(n.id))
-            ? 0.16
-            : 1;
+        ctx.globalAlpha =
+          !focused || (exploring && !active.has(n.id)) ? 0.16 : 1;
         ctx.fillStyle = nodeColor(n.kind, p.dark);
         nodePath(ctx, n.kind, pos.x, pos.y, pos.radius);
         ctx.fill();
@@ -336,39 +304,35 @@ export function GraphCanvas(props: Props) {
             ctx.stroke();
           });
         }
-        if (selected || n.id === hover) {
+        if (selected) {
           ctx.strokeStyle = "#60a5fa";
           ctx.lineWidth = 2 / view.scale;
           nodePath(
             ctx,
-            multiTag ? "block" : n.kind,
+            n.kind === "asset" ? "asset" : multiTag ? "block" : n.kind,
             pos.x,
             pos.y,
             pos.radius + (multiTag ? 9 : 4) / view.scale,
           );
           ctx.stroke();
         }
-        if (highlight?.id === n.id && now < highlight.until) {
-          ctx.globalAlpha = (highlight.until - now) / 1400;
+        if (highlight?.id === n.id && p.selected.includes(n.id)) {
+          ctx.globalAlpha = 1;
           ctx.strokeStyle = "#3b82f6";
           ctx.lineWidth = 3 / view.scale;
           nodePath(
             ctx,
-            multiTag ? "block" : n.kind,
+            n.kind === "asset" ? "asset" : multiTag ? "block" : n.kind,
             pos.x,
             pos.y,
             pos.radius + (multiTag ? 15 : 10) / view.scale,
           );
           ctx.stroke();
-          animatingLabels = true;
         }
-        ctx.globalAlpha = hoverNeighbors.has(n.id)
-          ? 1
-          : !focused || (exploring && !active.has(n.id))
-            ? 0.16
-            : 1;
+        ctx.globalAlpha =
+          !focused || (exploring && !active.has(n.id)) ? 0.16 : 1;
         ctx.font = `${12 / view.scale}px system-ui`;
-        const emphasized = selected || hoverNeighbors.has(n.id);
+        const emphasized = selected;
         const max = emphasized ? 96 : 24;
         const label =
           n.label.length > max ? n.label.slice(0, max) + "…" : n.label;
@@ -380,40 +344,23 @@ export function GraphCanvas(props: Props) {
             : { x: labelX, y: sy + 4 };
         const showLabel =
           n.kind === "page" ||
-          ((hoverNeighbors.has(n.id) ||
-            (exploring
-              ? (n.kind !== "block" || active.has(n.id)) &&
-                (selected || view.scale > 0.3)
-              : nearby.has(n.id))) &&
+          (exploring &&
+            ((n.kind !== "block" && n.kind !== "asset") || active.has(n.id)) &&
+            (selected || view.scale > 0.3) &&
             reserveLabel(occupied, labelX, sy - 9, labelWidth, 16, emphasized));
-        const targetOpacity = showLabel
+        const opacity = showLabel
           ? n.kind === "page"
             ? Math.max(0.65, ctx.globalAlpha)
             : ctx.globalAlpha
           : 0;
-        let fade = labelFades.get(n.id);
-        if (!fade && showLabel) {
-          fade = {
-            from: 0,
-            target: targetOpacity,
-            startedAt: now,
-            text: label,
-          };
-          labelFades.set(n.id, fade);
-        }
-        if (fade) {
-          const opacity = fadeLabel(fade, targetOpacity, now);
-          if (showLabel) fade.text = label;
-          animatingLabels ||= opacity !== targetOpacity;
+        if (showLabel)
           labelsToDraw.push({
-            text: fade.text,
+            text: label,
             x: placement.x,
             y: placement.y,
             opacity,
             page: n.kind === "page",
           });
-          if (opacity === 0 && targetOpacity === 0) labelFades.delete(n.id);
-        }
       }
       // Draw text after every node; page titles are the final layer.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -430,7 +377,6 @@ export function GraphCanvas(props: Props) {
         ctx.fillText(label.text, label.x, label.y);
       }
       ctx.globalAlpha = 1;
-      if (animatingLabels) schedule();
     }
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(draw);
@@ -485,7 +431,7 @@ export function GraphCanvas(props: Props) {
         scale,
         initialized: true,
       };
-      highlight = { id: request.id, until: performance.now() + 1400 };
+      highlight = { id: request.id };
       schedule();
     };
     worker.onmessage = (
@@ -571,7 +517,6 @@ export function GraphCanvas(props: Props) {
       fitOnSettle = false;
       canvas.focus();
       const p = point(e);
-      pointer = p;
       gesture = {
         id: hit(p),
         tagIds: hitTags(p),
@@ -585,8 +530,6 @@ export function GraphCanvas(props: Props) {
     };
     const move = (e: PointerEvent) => {
       const p = point(e);
-      pointer =
-        p.x >= 0 && p.y >= 0 && p.x <= width && p.y <= height ? p : null;
       if (gesture) {
         gesture.moved ||=
           Math.hypot(p.x - gesture.startX, p.y - gesture.startY) > 3;
@@ -609,12 +552,6 @@ export function GraphCanvas(props: Props) {
         gesture.x = p.x;
         gesture.y = p.y;
       }
-      schedule();
-    };
-    const leave = () => {
-      pointer = null;
-      hover = null;
-      canvas.title = "";
       schedule();
     };
     const up = (e: PointerEvent) => {
@@ -652,7 +589,6 @@ export function GraphCanvas(props: Props) {
           3.6,
           Math.max(0.05, camera.current.scale * (e.deltaY > 0 ? 0.9 : 1.1)),
         );
-      pointer = p;
       camera.current = {
         x: p.x - w.x * scale,
         y: p.y - w.y * scale,
@@ -675,7 +611,6 @@ export function GraphCanvas(props: Props) {
     canvas.addEventListener("pointerdown", down);
     canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerup", up);
-    canvas.addEventListener("pointerleave", leave);
     canvas.addEventListener("pointercancel", cancel);
     canvas.addEventListener("dblclick", dbl);
     canvas.addEventListener("wheel", wheel, { passive: false });
@@ -692,7 +627,6 @@ export function GraphCanvas(props: Props) {
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerup", up);
-      canvas.removeEventListener("pointerleave", leave);
       canvas.removeEventListener("pointercancel", cancel);
       canvas.removeEventListener("dblclick", dbl);
       canvas.removeEventListener("wheel", wheel);

@@ -3,7 +3,6 @@ import { createLayout, Position } from "./layout";
 import { GraphData } from "./model";
 let layout: ReturnType<typeof createLayout> | undefined;
 let regions: GraphData["regions"] = [];
-let lastBoundaryAt = -Infinity;
 let timer: ReturnType<typeof setTimeout> | undefined;
 function tick() {
   if (!layout) return;
@@ -15,24 +14,19 @@ function tick() {
     layout.simulation.alpha() > 0.015
   );
   const settled = layout.simulation.alpha() <= 0.015;
-  const now = performance.now();
-  const boundaries =
-    settled || now - lastBoundaryAt >= 120
-      ? buildRegionBoundaries(regions, layout.nodes)
-      : undefined;
-  if (boundaries) lastBoundaryAt = performance.now();
-  self.postMessage({
-    boundaries,
-    positions: layout.nodes.map(({ id, x, y, radius }) => ({
-      id,
-      x,
-      y,
-      radius,
-    })),
-    settled,
-  });
   timer = undefined;
-  if (layout.simulation.alpha() > 0.015) timer = setTimeout(tick, 24);
+  if (settled) {
+    self.postMessage({
+      boundaries: buildRegionBoundaries(regions, layout.nodes),
+      positions: layout.nodes.map(({ id, x, y, radius }) => ({
+        id,
+        x,
+        y,
+        radius,
+      })),
+      settled: true,
+    });
+  } else timer = setTimeout(tick, 24);
 }
 self.onmessage = (
   event: MessageEvent<
@@ -46,7 +40,6 @@ self.onmessage = (
     clearTimeout(timer);
     layout?.simulation.stop();
     regions = data.graph.regions;
-    lastBoundaryAt = -Infinity;
     layout = createLayout(data.graph, data.distance, data.previous);
     tick();
   } else if (data.type === "distance") {
@@ -59,8 +52,19 @@ self.onmessage = (
       n.y = data.y;
       n.fx = data.release ? null : data.x;
       n.fy = data.release ? null : data.y;
-      layout.simulation.alpha(0.2);
-      if (timer === undefined) tick();
+      // A drag directly sets the node position. Keep the rest of the settled
+      // layout still and refresh its region once the pointer is released.
+      if (data.release && timer === undefined)
+        self.postMessage({
+          boundaries: buildRegionBoundaries(regions, layout.nodes),
+          positions: layout.nodes.map(({ id, x, y, radius }) => ({
+            id,
+            x,
+            y,
+            radius,
+          })),
+          settled: true,
+        });
     }
   }
 };
