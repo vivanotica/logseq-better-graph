@@ -1,4 +1,5 @@
 import { bridgeRegions, REGION_BRIDGE_RADIUS } from "./region-bridges";
+import { regionTerritories } from "./region-ownership";
 import type { Point, Position } from "./layout";
 import type { GraphData } from "./model";
 
@@ -14,18 +15,26 @@ export interface RegionBoundary {
   islands: RegionIsland[];
 }
 
-// World-space raster union. Each connected component retains its holes.
-export function regionBoundary(
+interface Grid {
+  x0: number;
+  y0: number;
+  step: number;
+  cols: number;
+  rows: number;
+}
+const REGION_PADDING = 48;
+function makeGrid(
   members: Position[],
-  others: Position[] = [],
-): RegionIsland[] {
-  if (!members.length) return [];
+  others: Position[],
+  padding: number,
+  obstaclePadding = 6,
+): Grid {
   let x0 = Infinity,
     y0 = Infinity,
     x1 = -Infinity,
     y1 = -Infinity;
   for (const n of members) {
-    const r = n.radius + 24;
+    const r = n.radius + padding;
     x0 = Math.min(x0, n.x - r);
     y0 = Math.min(y0, n.y - r);
     x1 = Math.max(x1, n.x + r);
@@ -36,7 +45,7 @@ export function regionBoundary(
   const bounds = { x0, y0, x1, y1 };
   for (const n of others) {
     if (memberIds.has(n.id)) continue;
-    const r = n.radius + 6 + REGION_BRIDGE_RADIUS;
+    const r = n.radius + obstaclePadding + REGION_BRIDGE_RADIUS;
     if (
       n.x + r < bounds.x0 ||
       n.x - r > bounds.x1 ||
@@ -59,6 +68,33 @@ export function regionBoundary(
   const rows = Math.ceil((y1 - y0) / step) + 2;
   x0 -= step;
   y0 -= step;
+  return { x0, y0, step, cols, rows };
+}
+
+// World-space raster union. Each connected component retains its holes.
+export function regionBoundary(
+  members: Position[],
+  others: Position[] = [],
+  padding = REGION_PADDING,
+): RegionIsland[] {
+  if (!members.length) return [];
+  return rasterRegion(
+    members,
+    others,
+    makeGrid(members, others, padding),
+    undefined,
+    padding,
+  );
+}
+
+function rasterRegion(
+  members: Position[],
+  others: Position[],
+  grid: Grid,
+  territory?: Uint8Array,
+  padding = REGION_PADDING,
+): RegionIsland[] {
+  const { x0, y0, step, cols, rows } = grid;
   const mask = new Uint8Array(cols * rows);
   const paint = (
     n: Position,
@@ -89,13 +125,41 @@ export function regionBoundary(
         target[y * cols + x] = value;
     }
   };
-  for (const n of members) paint(n, 24, 1);
+  for (const n of members) paint(n, padding, 1);
   const ids = new Set(members.map((n) => n.id));
   for (const n of others) if (!ids.has(n.id)) paint(n, 6, 0);
   const blocked = new Uint8Array(mask.length);
   for (const n of others)
     if (!ids.has(n.id))
       paint(n, 6 + REGION_BRIDGE_RADIUS + step / 2, 1, blocked);
+  if (territory)
+    for (let i = 0; i < mask.length; i++)
+      if (!territory[i]) {
+        mask[i] = 0;
+        blocked[i] = 1;
+      }
+  // Keep newly added padding clear of another tag's territory; the extra area
+  // is granted only to points that remain inside the member's existing territory.
+  if (territory)
+    for (const n of members) {
+      const radius = n.radius + padding;
+      const left = Math.max(0, Math.floor((n.x - radius - x0) / step));
+      const right = Math.min(cols - 1, Math.floor((n.x + radius - x0) / step));
+      const top = Math.max(0, Math.floor((n.y - radius - y0) / step));
+      const bottom = Math.min(rows - 1, Math.floor((n.y + radius - y0) / step));
+      for (let y = top; y <= bottom; y++)
+        for (let x = left; x <= right; x++) {
+          const cell = y * cols + x;
+          if (
+            territory[cell] &&
+            Math.hypot(
+              x0 + (x + 0.5) * step - n.x,
+              y0 + (y + 0.5) * step - n.y,
+            ) <= radius
+          )
+            mask[cell] = 1;
+        }
+    }
   bridgeRegions(mask, blocked, cols, rows, step);
   const visited = new Uint8Array(mask.length);
   const queue = new Int32Array(mask.length);
@@ -176,15 +240,32 @@ export function buildRegionBoundaries(
   positions: Position[],
 ): RegionBoundary[] {
   const byId = new Map(positions.map((n) => [n.id, n]));
-  return regions.map((region) => ({
+  const groups = regions.map((region) =>
+    region.memberIds
+      .map((id) => byId.get(id))
+      .filter((n): n is Position => !!n),
+  );
+  const members = [...new Map(groups.flat().map((n) => [n.id, n])).values()];
+  if (!members.length)
+    return regions.map(({ id, label, color }) => ({
+      id,
+      label,
+      color,
+      islands: [],
+    }));
+  const grid = makeGrid(
+    members,
+    positions,
+    REGION_PADDING,
+    6 + REGION_BRIDGE_RADIUS,
+  );
+  const territory = regionTerritories(regions, groups, grid);
+  return regions.map((region, i) => ({
     id: region.id,
     label: region.label,
     color: region.color,
-    islands: regionBoundary(
-      region.memberIds
-        .map((id) => byId.get(id))
-        .filter((n): n is Position => !!n),
-      positions,
-    ),
+    islands: groups[i].length
+      ? rasterRegion(groups[i], positions, grid, territory(i), REGION_PADDING)
+      : [],
   }));
 }
