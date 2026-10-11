@@ -9,7 +9,7 @@ Explore how your Logseq pages, blocks, and tags connect.
 <p>
   <a href="https://github.com/vivanotica/logseq-better-graph/releases"><img src="https://img.shields.io/github/downloads/vivanotica/logseq-better-graph/total?style=flat-square&label=downloads" alt="GitHub downloads"></a>
   <a href="https://github.com/vivanotica/logseq-better-graph/stargazers"><img src="https://img.shields.io/github/stars/vivanotica/logseq-better-graph?style=flat-square" alt="GitHub stars"></a>
-  <a href="https://github.com/vivanotica/logseq-better-graph/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue?style=flat-square" alt="AGPL-3.0-only license"></a>
+  <a href="https://github.com/vivanotica/logseq-better-graph/blob/main/LICENSE"><img src="https://img.shields.io/github/license/vivanotica/logseq-better-graph?style=flat-square" alt="Repository license"></a>
   <img src="https://img.shields.io/badge/Logseq-DB-6366f1?style=flat-square" alt="Logseq DB graphs">
 </p>
 
