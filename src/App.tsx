@@ -287,6 +287,13 @@ function GraphScreen() {
               Journal
             </span>
             <span>
+              <i
+                className="node-asset"
+                style={{ background: nodeColor("asset", dark) }}
+              />{" "}
+              Asset
+            </span>
+            <span>
               <i className="solid" /> Page connections →
             </span>
             <span>

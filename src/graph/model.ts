@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Adapted from Logseq graph_view.cljs; see NOTICE.
-export type NodeKind = "page" | "block" | "journal";
+export type NodeKind = "page" | "block" | "journal" | "asset";
 export interface Entity {
   id: string;
   uuid?: string;
   title: string;
   name?: string;
   ident?: string;
+  assetType?: string;
   parentId?: string;
   pageId?: string;
   tags: string[];
@@ -185,9 +186,12 @@ export function buildGraph(entities: Entity[]): GraphData {
       kind:
         e.journal || classIdents(e).includes("logseq.class/Journal")
           ? "journal"
-          : e.name !== undefined
-            ? "page"
-            : "block",
+          : e.assetType !== undefined ||
+              classIdents(e).includes("logseq.class/Asset")
+            ? "asset"
+            : e.name !== undefined
+              ? "page"
+              : "block",
       parentId: nodeIds.has(e.parentId ?? e.pageId ?? "")
         ? (e.parentId ?? (e.pageId !== id ? e.pageId : undefined))
         : undefined,

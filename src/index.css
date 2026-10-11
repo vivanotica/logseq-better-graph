@@ -415,7 +415,8 @@ body {
 
 .graph-legend .node-page,
 .graph-legend .node-block,
-.graph-legend .node-journal {
+.graph-legend .node-journal,
+.graph-legend .node-asset {
   width: 9px;
   height: 9px;
   background: currentColor;
@@ -426,4 +427,7 @@ body {
 }
 .graph-legend .node-journal {
   transform: rotate(45deg);
+}
+.graph-legend .node-asset {
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
 }

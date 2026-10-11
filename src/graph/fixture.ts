@@ -18,6 +18,7 @@ export function previewGraph() {
   });
   return buildGraph([
     entity("class", "Tag", { ident: "logseq.class/Tag", name: "tag" }),
+    entity("assetClass", "Asset", { ident: "logseq.class/Asset" }),
     entity("research", "Research", { name: "research", tags: ["class"] }),
     entity("ideas", "Ideas", { name: "ideas", tags: ["class"] }),
     entity("A", "Knowledge systems", {
@@ -51,7 +52,13 @@ export function previewGraph() {
       parentId: "A",
       pageId: "A",
       tags: ["research"],
-      refs: ["c1"],
+      refs: ["c1", "asset"],
+    }),
+    entity("asset", "Reference guide.pdf", {
+      parentId: "A",
+      pageId: "A",
+      tags: ["assetClass"],
+      assetType: "pdf",
     }),
   ]);
 }

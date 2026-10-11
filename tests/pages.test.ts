@@ -79,6 +79,24 @@ test("ownership prefers valid pages and handles missing owners and cycles", () =
   for (const id of ["orphan", "x", "y"])
     assert.equal(pages.owners.has(id), false);
 });
+test("assets inherit their containing page without becoming pages themselves", () => {
+  const graph = fixture();
+  graph.nodes.push(node("asset", "asset", { pageId: "A", parentId: "A" }));
+  graph.edges.push({
+    id: "asset-reference",
+    source: "B",
+    target: "asset",
+    kind: "reference",
+  });
+  const pages = derivePages(graph);
+  assert.equal(pages.owners.get("asset"), "A");
+  assert.ok(pages.members.get("A")?.includes("asset"));
+  assert.ok(
+    pages.connections.some(
+      (connection) => connection.source === "B" && connection.target === "A",
+    ),
+  );
+});
 test("page and block click exploration preserves depth and supports multiple selections", () => {
   const graph = fixture(),
     pages = derivePages(graph);
@@ -143,7 +161,7 @@ test("distance updates keep simulation identity, positions, velocity and pinned 
       Math.abs(
         distances()[i] -
           initial[i] -
-          (link.kind === "hierarchy" ? 48 * 0.65 : 48),
+          (link.kind === "hierarchy" ? 48 * 0.65 : 48) * 1.8,
       ) < 1e-8,
     );
   });

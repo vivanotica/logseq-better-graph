@@ -20,8 +20,7 @@ export function derivePages(graph: GraphData): PageGraph {
   const resolved = new Set<string>();
   const isPage = (id: string | undefined) =>
     !!id &&
-    nodes.get(id)?.kind !== undefined &&
-    nodes.get(id)?.kind !== "block";
+    (nodes.get(id)?.kind === "page" || nodes.get(id)?.kind === "journal");
   for (const node of graph.nodes) {
     const path: string[] = [];
     const seen = new Set<string>();

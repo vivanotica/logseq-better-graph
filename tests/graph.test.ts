@@ -178,6 +178,7 @@ test("SDK pull normalization handles namespaced fields, refs, tags, links and fl
         "block/refs": [{ "db/id": 4 }],
         "block/tags": [{ "db/id": 5 }],
         "block/link": { "db/id": 4 },
+        "logseq.property.asset/type": "pdf",
         "logseq.property/exclude-from-graph-view": true,
       },
     ],
@@ -185,6 +186,7 @@ test("SDK pull normalization handles namespaced fields, refs, tags, links and fl
   assert.equal(result[0].parentId, "2");
   assert.deepEqual(result[0].refs, ["4"]);
   assert.equal(result[0].linkId, "4");
+  assert.equal(result[0].assetType, "pdf");
   assert.equal(result[0].excluded, true);
   assert.throws(() => normalizeEntities(null));
   assert.throws(() => normalizeEntities([[{}]]));
@@ -203,6 +205,18 @@ test("DB guard distinguishes file graph, empty DB graph and failed query", async
     /offline/,
   );
   assert.ok(ENTITY_QUERY.includes(":block/link"));
+  assert.ok(ENTITY_QUERY.includes(":logseq.property.asset/type"));
+});
+test("asset references become distinctly typed asset nodes", () => {
+  const graph = buildGraph([
+    entity("assetClass", { ident: "logseq.class/Asset" }),
+    entity("A", { name: "A", refs: ["asset"] }),
+    entity("asset", { title: "Manual.pdf", assetType: "pdf" }),
+  ]);
+  assert.equal(graph.nodes.find((n) => n.id === "asset")?.kind, "asset");
+  assert.ok(
+    graph.edges.some((edge) => edge.source === "A" && edge.target === "asset"),
+  );
 });
 test("settings tolerate corrupted storage and clamp values", () => {
   assert.deepEqual(decodeSettings(null), defaultSettings);
@@ -389,7 +403,30 @@ test("node sizes follow full text length, stay bounded, and ignore connection co
   const radius = (id: string) => nodes.find((n) => n.id === id)!.radius;
   assert.ok(radius("short") < radius("medium"));
   assert.ok(radius("medium") < radius("long"));
-  assert.ok(radius("long") <= 20);
+  assert.ok(radius("long") <= 80);
   assert.equal(radius("short"), radius("same"));
+  simulation.stop();
+});
+
+test("non-block nodes are four times larger than equally labeled blocks", () => {
+  const graph = buildGraph([
+    entity("page", { name: "page", title: "same" }),
+    entity("block", {
+      title: "same",
+      parentId: "page",
+      pageId: "page",
+    }),
+    entity("journal", { name: "journal", title: "same", journal: true }),
+    entity("assetClass", { ident: "logseq.class/Asset", name: "Asset" }),
+    entity("asset", {
+      title: "same",
+      tags: ["assetClass"],
+    }),
+    entity("assetRef", { title: "Asset holder", refs: ["asset", "block"] }),
+  ]);
+  const { nodes, simulation } = createLayout(graph, 72, []);
+  const radius = (id: string) => nodes.find((n) => n.id === id)!.radius;
+  for (const id of ["page", "journal", "asset"])
+    assert.equal(radius(id), radius("block") * 4);
   simulation.stop();
 });

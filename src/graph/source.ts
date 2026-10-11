@@ -4,7 +4,7 @@ export type Query = (query: string) => Promise<unknown>;
 // DB SDK strips block/db namespaces, retains hyphenated names, and prefixes other namespaces with a colon.
 // Accept namespaced pulls as well for host-version compatibility.
 const pull =
-  "[:db/id :db/ident :block/uuid :block/name :block/title :block/journal-day :logseq.property/hide? :logseq.property/deleted-at :logseq.property/exclude-from-graph-view {:block/parent [:db/id]} {:block/page [:db/id]} {:block/refs [:db/id]} {:block/tags [:db/id]} {:block/link [:db/id]}]";
+  "[:db/id :db/ident :block/uuid :block/name :block/title :block/journal-day :logseq.property.asset/type :logseq.property/hide? :logseq.property/deleted-at :logseq.property/exclude-from-graph-view {:block/parent [:db/id]} {:block/page [:db/id]} {:block/refs [:db/id]} {:block/tags [:db/id]} {:block/link [:db/id]}]";
 export const DB_PROBE = "[:find ?id :where [?id :db/ident :logseq.class/Page]]";
 export const ENTITY_QUERY = `[:find (pull ?e ${pull}) :where [?e :block/uuid]]`;
 function record(value: unknown): Record<string, unknown> {
@@ -52,6 +52,7 @@ export function normalizeEntities(result: unknown): Entity[] {
         "",
       name: text(field(r, "block/name")),
       ident,
+      assetType: text(field(r, "logseq.property.asset/type")),
       parentId: id(field(r, "block/parent")),
       pageId: id(field(r, "block/page")),
       tags: refs("block/tags"),
