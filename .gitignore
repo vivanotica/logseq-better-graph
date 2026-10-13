@@ -6,6 +6,8 @@ dist-ssr
 
 # Local caches, reports and release archives
 .pnpm-store/
+.playwright-cli/
+output/playwright/
 coverage/
 *.tsbuildinfo
 *.log
