@@ -1,13 +1,14 @@
 {
   "name": "Better Graph View",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "main": "dist/index.html",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preinstall": "npx only-allow pnpm",
     "test": "tsx --test tests/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release": "bash scripts/release.sh"
   },
   "license": "AGPL-3.0-only",
   "dependencies": {
