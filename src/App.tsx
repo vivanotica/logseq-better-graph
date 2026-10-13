@@ -117,9 +117,7 @@ function GraphScreen() {
     selectionDetails[0];
   const tagGroups = useMemo(
     () =>
-      snapshot.data
-        ? partitionTags(snapshot.data)
-        : { builtIn: [], user: [] },
+      snapshot.data ? partitionTags(snapshot.data) : { builtIn: [], user: [] },
     [snapshot.data],
   );
   useEffect(() => {
@@ -163,7 +161,9 @@ function GraphScreen() {
   const tags = tagGroups.user;
   const builtInTags = tagGroups.builtIn;
   const allTags = [...tags, ...builtInTags];
-  const selectedTags = new Set(settings.selectedTagIds ?? allTags.map((t) => t.id));
+  const selectedTags = new Set(
+    settings.selectedTagIds ?? allTags.map((t) => t.id),
+  );
   const matches = nodeQuery.trim()
     ? graph?.nodes
         .filter((n) =>
@@ -174,15 +174,6 @@ function GraphScreen() {
   return (
     <main className={`better-graph ${dark ? "dark" : ""}`}>
       <header className="graph-header">
-        <div className="graph-heading">
-          <span className="graph-mark">⌘</span>
-          <div>
-            <h1>Better Graph</h1>
-            <p>
-              {snapshot.graphName || "Logseq DB"} <span>Pages & blocks</span>
-            </p>
-          </div>
-        </div>
         <div className="graph-toolbar">
           {snapshot.status === "loading" && (
             <span className="loading-label" role="status">
@@ -201,10 +192,11 @@ function GraphScreen() {
             onClick={() => setPanel((v) => !v)}
             aria-expanded={panel}
             aria-label="Graph settings"
+            title="Graph settings"
           >
             ⚙
           </button>
-          <button onClick={close} aria-label="Close graph">
+          <button onClick={close} aria-label="Close graph" title="Close graph">
             ×
           </button>
         </div>
@@ -269,7 +261,7 @@ function GraphScreen() {
           {graph && graph.nodes.length === 0 && (
             <div className="graph-message">
               <h2>No nodes to display</h2>
-              <p>Try selecting all tags or showing journals.</p>
+              <p>Try selecting all tags or including journal pages and blocks.</p>
               <button
                 onClick={() =>
                   updateSettings({ selectedTagIds: null, showJournals: true })
@@ -279,55 +271,63 @@ function GraphScreen() {
               </button>
             </div>
           )}
-          <div className="graph-legend">
-            <span>
-              <i
-                className="node-page"
-                style={{ background: nodeColor("page", dark) }}
-              />{" "}
-              Page
-            </span>
-            <span>
-              <i
-                className="node-block"
-                style={{ background: nodeColor("block", dark) }}
-              />{" "}
-              Block
-            </span>
-            <span>
-              <i
-                className="node-journal"
-                style={{ background: nodeColor("journal", dark) }}
-              />{" "}
-              Journal
-            </span>
-            <span>
-              <i
-                className="node-asset"
-                style={{ background: nodeColor("asset", dark) }}
-              />{" "}
-              Asset
-            </span>
-            <span>
-              <i className="solid" /> Page connections →
-            </span>
-            <span>
-              <i className="reference-line" /> Reference →
-            </span>
-            <span>
-              <i className="embed-line" /> Embed →
-            </span>
-            <span>
-              <i className="hierarchy-line" /> Parent–child
-            </span>
-            <span>
-              <i className="region" /> Tag region
-            </span>
-          </div>
-          <div className="graph-hint">
-            Drag to move · Scroll to zoom · Click a region to filter tags ·
-            Click to select · Double-click to open
-          </div>
+          <details className="graph-help">
+            <summary
+              aria-label="Graph legend and controls"
+              title="Legend and controls"
+            >
+              ?
+            </summary>
+            <div className="graph-legend">
+              <span>
+                <i
+                  className="node-page"
+                  style={{ background: nodeColor("page", dark) }}
+                />{" "}
+                Page
+              </span>
+              <span>
+                <i
+                  className="node-block"
+                  style={{ background: nodeColor("block", dark) }}
+                />{" "}
+                Block
+              </span>
+              <span>
+                <i
+                  className="node-journal"
+                  style={{ background: nodeColor("journal", dark) }}
+                />{" "}
+                Journal
+              </span>
+              <span>
+                <i
+                  className="node-asset"
+                  style={{ background: nodeColor("asset", dark) }}
+                />{" "}
+                Asset
+              </span>
+              <span>
+                <i className="solid" /> Page connections →
+              </span>
+              <span>
+                <i className="reference-line" /> Reference →
+              </span>
+              <span>
+                <i className="embed-line" /> Embed →
+              </span>
+              <span>
+                <i className="hierarchy-line" /> Parent–child
+              </span>
+              <span>
+                <i className="region" /> Tag region
+              </span>
+            </div>
+            <div className="graph-hint">
+              Drag to move · Scroll to zoom · Click a region to filter tags ·
+              Click to select · Double-click to open
+            </div>
+          </details>
           {!!tagChoices.length && (
             <div
               className="graph-selection"
@@ -370,7 +370,6 @@ function GraphScreen() {
             >
               <div className="selection-header">
                 <div>
-                  <small>NODE DETAILS</small>
                   <strong>{selectionDetails.length} selected</strong>
                 </div>
                 <button
@@ -455,18 +454,9 @@ function GraphScreen() {
         {panel && (
           <aside className="graph-settings" aria-label="Graph settings">
             <section>
-              <h2>View mode</h2>
-              <div className="mode-active">Pages & blocks</div>
-              <p className="muted">
-                Page-centered connections. Nearby tag members form islands;
-                colored rings show shared tags.
-              </p>
-            </section>
-            <section>
-              <h2>Find a node</h2>
               <input
                 type="search"
-                placeholder="Search pages and blocks"
+                placeholder="Find a node"
                 aria-label="Find a node"
                 value={nodeQuery}
                 onChange={(e) => setNodeQuery(e.target.value)}
@@ -581,16 +571,11 @@ function GraphScreen() {
               </div>
             </section>
             <section>
-              <h2>
-                Layout <small>Force</small>
-              </h2>
+              <h2>Layout</h2>
               <div className="graph-stats">
                 <span>{graph?.nodes.length ?? 0} nodes</span>
                 <span>{graph?.edges.length ?? 0} links</span>
               </div>
-              <p className="muted">
-                Larger nodes contain longer titles or text.
-              </p>
               <label className="slider-label">
                 Depth <strong>{settings.depth}</strong>
                 <input
@@ -617,7 +602,10 @@ function GraphScreen() {
                   }
                 />
               </label>
-              <label className="journal-toggle">
+              <label
+                className="journal-toggle"
+                title="Include daily journal pages and their blocks in the graph. Tag filters still apply."
+              >
                 <input
                   type="checkbox"
                   checked={settings.showJournals}
@@ -625,7 +613,7 @@ function GraphScreen() {
                     updateSettings({ showJournals: e.target.checked })
                   }
                 />{" "}
-                Show journals
+                Include journal pages &amp; blocks
               </label>
             </section>
           </aside>

@@ -60,47 +60,14 @@ body {
   outline-offset: 2px;
 }
 .graph-header {
-  height: 76px;
-  flex-shrink: 0;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
-}
-.graph-heading {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  min-width: 0;
-}
-.graph-mark {
-  font-size: 30px;
-  color: var(--muted);
-}
-.graph-heading h1 {
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.3px;
-  margin: 0;
-}
-.graph-heading p {
-  margin: 3px 0 0;
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 50vw;
-}
-.graph-heading p span {
-  margin-left: 14px;
-  opacity: 0.8;
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
 }
 .graph-toolbar {
   display: flex;
-  gap: 7px;
+  gap: 4px;
   align-items: center;
 }
 .graph-toolbar button {
@@ -132,15 +99,15 @@ body {
   outline: none;
 }
 .graph-settings {
-  width: 278px;
+  width: 232px;
   flex-shrink: 0;
   overflow-y: auto;
   border-left: 1px solid var(--line);
   background: var(--panel);
-  padding: 0 19px;
+  padding: 44px 12px 0;
 }
 .graph-settings section {
-  padding: 21px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--line);
 }
 .graph-settings h2 {
@@ -149,21 +116,12 @@ body {
   align-items: center;
   font-size: 12px;
   font-weight: 600;
-  margin: 0 0 13px;
+  margin: 0 0 8px;
 }
 .graph-settings small {
   color: var(--muted);
   font-size: 11px;
   font-weight: 400;
-}
-.mode-active {
-  text-align: center;
-  font-size: 12px;
-  background: var(--hover);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 8px;
-  font-weight: 500;
 }
 .muted {
   color: var(--muted);
@@ -176,7 +134,7 @@ body {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 8px 9px;
+  padding: 6px 8px;
   background: var(--bg);
   color: var(--fg);
   box-sizing: border-box;
@@ -188,7 +146,7 @@ body {
 .tag-actions {
   display: flex;
   gap: 6px;
-  margin: 10px 0;
+  margin: 6px 0;
 }
 .tag-actions button {
   font-size: 11px;
@@ -198,7 +156,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 13px 0 5px;
+  margin: 8px 0 4px;
   font-size: 11px;
 }
 .tag-group-heading strong {
@@ -217,7 +175,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 3px;
+  padding: 5px 2px;
   cursor: pointer;
   border-radius: 5px;
 }
@@ -240,8 +198,8 @@ body {
   margin-right: 4px;
 }
 .default-tags-heading {
-  margin-top: 18px;
-  padding-top: 13px;
+  margin-top: 10px;
+  padding-top: 8px;
   border-top: 1px solid var(--line);
 }
 .node-kind-list {
@@ -283,13 +241,13 @@ body {
   justify-content: space-between;
   font-size: 11px;
   color: var(--muted);
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 .slider-label {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  margin: 14px 0;
+  margin: 10px 0;
   gap: 8px;
   font-size: 12px;
 }
@@ -309,17 +267,33 @@ body {
   gap: 8px;
   align-items: center;
   font-size: 12px;
-  margin-top: 20px;
+  margin-top: 12px;
+}
+.graph-help {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 1;
+  max-width: min(320px, calc(100% - 20px));
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 11px;
+}
+.graph-help summary {
+  cursor: pointer;
+  padding: 5px 10px;
+  list-style: none;
+  width: fit-content;
+}
+.graph-help summary::-webkit-details-marker {
+  display: none;
 }
 .graph-legend {
-  position: absolute;
-  top: 18px;
-  left: 20px;
-  right: 20px;
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  pointer-events: none;
+  gap: 10px 12px;
+  padding: 4px 10px 8px;
   color: var(--muted);
   font-size: 10px;
 }
@@ -352,25 +326,23 @@ body {
   border-radius: 5px;
 }
 .graph-hint {
-  position: absolute;
-  bottom: 16px;
-  left: 20px;
+  padding: 0 10px 10px;
   color: var(--muted);
   font-size: 10px;
-  pointer-events: none;
+  line-height: 1.5;
 }
 .graph-selection {
   position: absolute;
   bottom: 42px;
-  left: 20px;
-  width: min(330px, calc(100% - 40px));
+  left: 10px;
+  width: min(290px, calc(100% - 20px));
   max-height: min(430px, calc(100% - 100px));
   overflow: auto;
-  padding: 15px;
+  padding: 10px;
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: 0 14px 38px #00000018;
-  border-radius: 13px;
+  border-radius: 8px;
 }
 .selection-header {
   display: flex;
@@ -402,7 +374,7 @@ body {
   line-height: 1;
 }
 .selection-detail {
-  padding: 13px;
+  padding: 9px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--bg);
@@ -573,20 +545,8 @@ body {
 }
 @media (max-width: 700px) {
   .graph-settings {
-    width: 230px;
-    padding: 0 12px;
-  }
-  .graph-legend {
-    flex-direction: column;
-    gap: 5px;
-  }
-  .graph-heading p span,
-  .graph-hint {
-    display: none;
-  }
-  .graph-header {
-    padding: 0 14px;
-    height: 64px;
+    width: min(210px, 55vw);
+    padding: 44px 10px 0;
   }
 }
 
